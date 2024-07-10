@@ -2,6 +2,7 @@
 package main
 
 import (
+	"crypto/tls"
 	"flag"
 	"log"
 	"net/http"
@@ -19,6 +20,7 @@ var (
 	rtorrentAddr     = flag.String("rtorrent.addr", "", "address of rTorrent XML-RPC server")
 	rtorrentUsername = flag.String("rtorrent.username", "", "[optional] username used for HTTP Basic authentication with rTorrent XML-RPC server")
 	rtorrentPassword = flag.String("rtorrent.password", "", "[optional] password used for HTTP Basic authentication with rTorrent XML-RPC server")
+	rtorrentInsecure = flag.Bool("rtorrent.insecure", false, "[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
 )
 
 func main() {
@@ -30,10 +32,25 @@ func main() {
 
 	// Optionally enable HTTP Basic authentication
 	var rt http.RoundTripper
+	authEnabled := false
 	if u, p := *rtorrentUsername, *rtorrentPassword; u != "" && p != "" {
 		rt = &authRoundTripper{
 			Username: u,
 			Password: p,
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: *rtorrentInsecure,
+				},
+			},
+		}
+		authEnabled = true
+	} else {
+		rt = &authRoundTripper{
+			Transport: &http.Transport{
+				TLSClientConfig: &tls.Config{
+					InsecureSkipVerify: *rtorrentInsecure,
+				},
+			},
 		}
 	}
 
@@ -50,7 +67,7 @@ func main() {
 	})
 
 	log.Printf("starting rTorrent exporter on %q for server %q (authentication: %v)",
-		*telemetryAddr, *rtorrentAddr, rt != nil)
+		*telemetryAddr, *rtorrentAddr, authEnabled)
 
 	if err := http.ListenAndServe(*telemetryAddr, nil); err != nil {
 		log.Fatalf("cannot start rTorrent exporter: %s", err)
@@ -62,11 +79,12 @@ var _ http.RoundTripper = &authRoundTripper{}
 // An authRoundTripper is a http.RoundTripper which adds HTTP Basic authentication
 // to each HTTP request.
 type authRoundTripper struct {
-	Username string
-	Password string
+	Username  string
+	Password  string
+	Transport *http.Transport
 }
 
 func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
 	r.SetBasicAuth(rt.Username, rt.Password)
-	return http.DefaultTransport.RoundTrip(r)
+	return rt.Transport.RoundTrip(r)
 }

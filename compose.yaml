@@ -1,7 +1,7 @@
 ---
 services:
   rtorrent_exporter:
-    image: "aauren/rtorrent_exporter:20240710"
+    image: "aauren/rtorrent_exporter:2024071001"
     container_name: rtorrent_exporter
     restart: unless-stopped
     ports:
@@ -14,5 +14,7 @@ services:
       # Optional
       # - "-rtorrent.username"
       # - "<username>"
-      # - "-rtorrent.username"
+      # - "-rtorrent.password"
       # - "<password>"
+      # - "rtorrent.insecure"
+      # - "true"

@@ -1,6 +1,7 @@
-// Command rtorrent_exporter provides a Prometheus exporter for rTorrent.
 //nolint:depguard // we haven't configured depguard for this project
 package main
+
+// Command rtorrent_exporter provides a Prometheus exporter for rTorrent.
 
 import (
 	"crypto/tls"
@@ -78,8 +79,8 @@ func main() {
 		http.Redirect(w, r, *metricsPath, http.StatusMovedPermanently)
 	})
 
-	log.Printf("starting rTorrent exporter on %q for server %q (authentication: %v)",
-		*telemetryAddr, *rtorrentAddr, authEnabled)
+	log.Printf("starting rTorrent exporter on %q for server %q (authentication: %v) (insecure: %v) (timeout: %v)",
+		*telemetryAddr, *rtorrentAddr, authEnabled, *rtorrentInsecure, *rtorrentTimeout)
 
 	server := &http.Server{
 		Addr:              *telemetryAddr,

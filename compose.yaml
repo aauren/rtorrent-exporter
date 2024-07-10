@@ -1,0 +1,18 @@
+---
+services:
+  rtorrent_exporter:
+    image: "aauren/rtorrent_exporter:20240710"
+    container_name: rtorrent_exporter
+    restart: unless-stopped
+    ports:
+      - 9135:9135
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    command:
+      - "-rtorrent.addr"
+      - "https://host.docker.internal/RPC2"
+      # Optional
+      # - "-rtorrent.username"
+      # - "<username>"
+      # - "-rtorrent.username"
+      # - "<password>"

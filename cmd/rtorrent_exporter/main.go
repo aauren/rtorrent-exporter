@@ -6,8 +6,8 @@ import (
 	"log"
 	"net/http"
 
-	"github.com/mdlayher/rtorrent"
-	"github.com/mdlayher/rtorrent_exporter"
+	"github.com/aauren/rtorrent/rtorrent"
+	"github.com/aauren/rtorrent_exporter/pkg/rtorrentexporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

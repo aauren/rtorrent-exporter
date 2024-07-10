@@ -1,11 +1,14 @@
 // Command rtorrent_exporter provides a Prometheus exporter for rTorrent.
+//nolint:depguard // we haven't configured depguard for this project
 package main
 
 import (
 	"crypto/tls"
 	"flag"
 	"log"
+	"net"
 	"net/http"
+	"time"
 
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/aauren/rtorrent_exporter/pkg/rtorrentexporter"
@@ -18,9 +21,14 @@ var (
 	metricsPath   = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
 
 	rtorrentAddr     = flag.String("rtorrent.addr", "", "address of rTorrent XML-RPC server")
-	rtorrentUsername = flag.String("rtorrent.username", "", "[optional] username used for HTTP Basic authentication with rTorrent XML-RPC server")
-	rtorrentPassword = flag.String("rtorrent.password", "", "[optional] password used for HTTP Basic authentication with rTorrent XML-RPC server")
-	rtorrentInsecure = flag.Bool("rtorrent.insecure", false, "[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
+	rtorrentUsername = flag.String("rtorrent.username", "",
+		"[optional] username used for HTTP Basic authentication with rTorrent XML-RPC server")
+	rtorrentPassword = flag.String("rtorrent.password", "",
+		"[optional] password used for HTTP Basic authentication with rTorrent XML-RPC server")
+	rtorrentInsecure = flag.Bool("rtorrent.insecure", false,
+		"[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
+	rtorrentTimeout = flag.Duration("rtorrent.timeout", 10*time.Second,
+		"[optional] duration of how long to wait before timing out request (defaults: 10s)")
 )
 
 func main() {
@@ -38,7 +46,9 @@ func main() {
 			Username: u,
 			Password: p,
 			Transport: &http.Transport{
+				Dial: dialTimeout,
 				TLSClientConfig: &tls.Config{
+					//nolint:gosec // we don't care that this may be true, that's the point
 					InsecureSkipVerify: *rtorrentInsecure,
 				},
 			},
@@ -47,7 +57,9 @@ func main() {
 	} else {
 		rt = &authRoundTripper{
 			Transport: &http.Transport{
+				Dial: dialTimeout,
 				TLSClientConfig: &tls.Config{
+					//nolint:gosec // we don't care that this may be true, that's the point
 					InsecureSkipVerify: *rtorrentInsecure,
 				},
 			},
@@ -69,7 +81,11 @@ func main() {
 	log.Printf("starting rTorrent exporter on %q for server %q (authentication: %v)",
 		*telemetryAddr, *rtorrentAddr, authEnabled)
 
-	if err := http.ListenAndServe(*telemetryAddr, nil); err != nil {
+	server := &http.Server{
+		Addr:              *telemetryAddr,
+		ReadHeaderTimeout: *rtorrentTimeout,
+	}
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("cannot start rTorrent exporter: %s", err)
 	}
 }
@@ -82,6 +98,10 @@ type authRoundTripper struct {
 	Username  string
 	Password  string
 	Transport *http.Transport
+}
+
+func dialTimeout(network, addr string) (net.Conn, error) {
+	return net.DialTimeout(network, addr, *rtorrentTimeout)
 }
 
 func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {

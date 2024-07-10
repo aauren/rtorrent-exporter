@@ -1,6 +1,4 @@
-FROM golang:1.13
-
-ENV GO111MODULE=on
+FROM golang:1.22.5-alpine3.19
 
 EXPOSE 9135
 

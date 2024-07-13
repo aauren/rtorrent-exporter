@@ -1,7 +1,7 @@
 //nolint:depguard // we haven't configured depguard for this project
 package main
 
-// Command rtorrent_exporter provides a Prometheus exporter for rTorrent.
+// Command rtorrent-exporter provides a Prometheus exporter for rTorrent.
 
 import (
 	"crypto/tls"
@@ -12,7 +12,7 @@ import (
 	"time"
 
 	"github.com/aauren/rtorrent/rtorrent"
-	"github.com/aauren/rtorrent_exporter/pkg/rtorrentexporter"
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

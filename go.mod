@@ -1,4 +1,4 @@
-module github.com/aauren/rtorrent_exporter
+module github.com/aauren/rtorrent-exporter
 
 go 1.22
 

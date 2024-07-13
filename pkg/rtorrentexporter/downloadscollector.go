@@ -48,6 +48,8 @@ type DownloadsCollector struct {
 	UploadTotalBytes   *prometheus.Desc
 
 	ds DownloadsSource
+
+	collectActiveDown bool
 }
 
 // Verify that DownloadsCollector implements the prometheus.Collector interface.
@@ -55,7 +57,7 @@ var _ prometheus.Collector = &DownloadsCollector{}
 
 // NewDownloadsCollector creates a new DownloadsCollector which collects metrics
 // regarding rTorrent downloads.
-func NewDownloadsCollector(ds DownloadsSource) *DownloadsCollector {
+func NewDownloadsCollector(ds DownloadsSource, collectActive bool) *DownloadsCollector {
 	const (
 		subsystem = "downloads"
 	)
@@ -64,7 +66,7 @@ func NewDownloadsCollector(ds DownloadsSource) *DownloadsCollector {
 		labels = []string{"info_hash", "name"}
 	)
 
-	return &DownloadsCollector{
+	downCollector := &DownloadsCollector{
 		Downloads: prometheus.NewDesc(
 			// Subsystem is used as name so we get "rtorrent_downloads"
 			prometheus.BuildFQName(namespace, "", subsystem),
@@ -129,36 +131,42 @@ func NewDownloadsCollector(ds DownloadsSource) *DownloadsCollector {
 			nil,
 		),
 
-		DownloadRateBytes: prometheus.NewDesc(
+		ds: ds,
+
+		collectActiveDown: collectActive,
+	}
+
+	if collectActive {
+		downCollector.DownloadRateBytes = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "download_rate_bytes"),
 			"Current download rate in bytes.",
 			labels,
 			nil,
-		),
+		)
 
-		DownloadTotalBytes: prometheus.NewDesc(
+		downCollector.DownloadTotalBytes = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "download_total_bytes"),
 			"Total Bytes downloaded.",
 			labels,
 			nil,
-		),
+		)
 
-		UploadRateBytes: prometheus.NewDesc(
+		downCollector.UploadRateBytes = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "upload_rate_bytes"),
 			"Current upload rate in bytes.",
 			labels,
 			nil,
-		),
+		)
 
-		UploadTotalBytes: prometheus.NewDesc(
+		downCollector.UploadTotalBytes = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "upload_total_bytes"),
 			"Total Bytes uploaded.",
 			labels,
 			nil,
-		),
-
-		ds: ds,
+		)
 	}
+
+	return downCollector
 }
 
 // collect begins a metrics collection task for all metrics related to rTorrent
@@ -168,8 +176,10 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 		return desc, err
 	}
 
-	if desc, err := c.collectActiveDownloads(ch); err != nil {
-		return desc, err
+	if c.collectActiveDown {
+		if desc, err := c.collectActiveDownloads(ch); err != nil {
+			return desc, err
+		}
 	}
 
 	return nil, nil

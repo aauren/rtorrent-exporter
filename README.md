@@ -1,4 +1,4 @@
-rtorrent_exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent_exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent_exporter) [![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
+rtorrent_exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent_exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent_exporter) ![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
 =================
 
 This is an updated fork of [mdlayher/rtorrent_exporter](https://github.com/mdlayher/rtorrent_exporter). Much appreciate goes to them for

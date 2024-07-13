@@ -18,8 +18,10 @@ import (
 )
 
 var (
-	telemetryAddr = flag.String("telemetry.addr", ":9135", "host:port for rTorrent exporter")
-	metricsPath   = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
+	telemetryAddr    = flag.String("telemetry.addr", ":9135", "host:port for rTorrent exporter")
+	metricsPath      = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
+	telemetryTimeout = flag.Duration("telemetry.timeout", 10*time.Second,
+		"[optional] duration of how long to wait to receive http headers on telemetry addr (defaults: 10s)")
 
 	rtorrentAddr     = flag.String("rtorrent.addr", "", "address of rTorrent XML-RPC server")
 	rtorrentUsername = flag.String("rtorrent.username", "",
@@ -79,12 +81,14 @@ func main() {
 		http.Redirect(w, r, *metricsPath, http.StatusMovedPermanently)
 	})
 
-	log.Printf("starting rTorrent exporter on %q for server %q (authentication: %v) (insecure: %v) (timeout: %v)",
-		*telemetryAddr, *rtorrentAddr, authEnabled, *rtorrentInsecure, *rtorrentTimeout)
+	log.Printf("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
+		"(authentication: %v) (insecure: %v) (timeout: %v)",
+		*telemetryAddr, *rtorrentAddr, *telemetryTimeout,
+		authEnabled, *rtorrentInsecure, *rtorrentTimeout)
 
 	server := &http.Server{
 		Addr:              *telemetryAddr,
-		ReadHeaderTimeout: *rtorrentTimeout,
+		ReadHeaderTimeout: *telemetryTimeout,
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("cannot start rTorrent exporter: %s", err)

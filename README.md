@@ -1,7 +1,7 @@
 rtorrent_exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent_exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent_exporter) ![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
 =================
 
-This is an updated fork of [mdlayher/rtorrent_exporter](https://github.com/mdlayher/rtorrent_exporter). Much appreciate goes to them for
+This is an updated fork of [mdlayher/rtorrent_exporter](https://github.com/mdlayher/rtorrent_exporter). Much appreciation goes to them for
 pioneering this package and putting effort into getting it off the ground.
 
 Specific additions made by this fork:
@@ -59,6 +59,17 @@ Docker Hub repo can be found here: [rtorrent-exporter](https://hub.docker.com/re
 
 ```
 docker run -ti --rm -p 9135:9135 --add-host=host.docker.internal:host-gateway "aauren/rtorrent-exporter:latest" -rtorrent.addr https://host.docker.internal/RPC2 -rtorrent.username "<http_basic_auth_user>" -rtorrent.password "<http_basic_auth_pass>" "-rtorrent.insecure" true
+```
+
+Docker Compose
+--------------
+
+See example here: [compose.yml](compose.yaml)
+
+To start, run:
+
+```
+docker compose up -d
 ```
 
 Sample

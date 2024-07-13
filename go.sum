@@ -1,5 +1,5 @@
-github.com/aauren/rtorrent v0.0.0-20240710142841-c84b34ba24a0 h1:e+Acc9rMEaZjjYKtXak96ufeZk7j7xR8waQD2PTcaDM=
-github.com/aauren/rtorrent v0.0.0-20240710142841-c84b34ba24a0/go.mod h1:9DApvTisGaWx1AUi+tVuo0we0g/98swZ8Qdo897EGKc=
+github.com/aauren/rtorrent v0.0.0-20240713221044-0a07e4de6583 h1:3e9lJegLu0gGGOrHcmx9QNqkriA4YCi+LRiCOb6aXIA=
+github.com/aauren/rtorrent v0.0.0-20240713221044-0a07e4de6583/go.mod h1:9DApvTisGaWx1AUi+tVuo0we0g/98swZ8Qdo897EGKc=
 github.com/beorn7/perks v1.0.1 h1:VlbKKnNfV8bJzeqoa4cOKqO6bYr3WgKZxO8Z16+hsOM=
 github.com/beorn7/perks v1.0.1/go.mod h1:G2ZrVWU2WbWT9wwq4/hrbKbnv/1ERSJQ0ibhJ6rlkpw=
 github.com/cespare/xxhash/v2 v2.3.0 h1:UL815xU9SqsFlibzuggzjXhog7bL6oX9BbNZnL2UFvs=

@@ -3,7 +3,7 @@ module github.com/aauren/rtorrent_exporter
 go 1.22
 
 require (
-	github.com/aauren/rtorrent v0.0.0-20240710142841-c84b34ba24a0
+	github.com/aauren/rtorrent v0.0.0-20240713221044-0a07e4de6583
 	github.com/prometheus/client_golang v1.19.1
 )
 

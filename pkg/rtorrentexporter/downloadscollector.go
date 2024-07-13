@@ -1,6 +1,7 @@
 package rtorrentexporter
 
 import (
+	"fmt"
 	"log"
 
 	"github.com/aauren/rtorrent/rtorrent"
@@ -21,6 +22,7 @@ type DownloadsSource interface {
 	Seeding() ([]string, error)
 	Leeching() ([]string, error)
 	Active() ([]string, error)
+	ActiveWithDetails() ([][]any, error)
 
 	BaseFilename(infoHash string) (string, error)
 	DownloadRate(infoHash string) (int, error)
@@ -282,7 +284,7 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 // collectActiveDownloads collects information about active downloads,
 // which are uploading and/or downloading data.
 func (c *DownloadsCollector) collectActiveDownloads(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
-	active, err := c.ds.Active()
+	active, err := c.ds.ActiveWithDetails()
 	if err != nil {
 		return c.DownloadsActive, err
 	}
@@ -293,35 +295,41 @@ func (c *DownloadsCollector) collectActiveDownloads(ch chan<- prometheus.Metric)
 		float64(len(active)),
 	)
 
+	// Here active should be a slice of slices, where each inner slice looks like:
+	// [hash, name, down.rate, down.total, up.rate, up.total]
 	for _, a := range active {
-		name, err := c.ds.BaseFilename(a)
-		if err != nil {
+		hash, ok := a[0].(string)
+		if !ok {
+			return c.DownloadRateBytes, err
+		}
+		name, ok := a[1].(string)
+		if !ok {
 			return c.DownloadRateBytes, err
 		}
 
 		labels := []string{
-			a,
+			hash,
 			name,
 		}
 
-		down, err := c.ds.DownloadRate(a)
-		if err != nil {
-			return c.DownloadRateBytes, err
+		down, ok := a[2].(int64)
+		if !ok {
+			return c.DownloadRateBytes, fmt.Errorf("failed to convert Download Rate Bytes")
 		}
 
-		downTotal, err := c.ds.DownloadTotal(a)
-		if err != nil {
-			return c.DownloadTotalBytes, err
+		downTotal, ok := a[3].(int64)
+		if !ok {
+			return c.DownloadTotalBytes, fmt.Errorf("failed to convert Download Total Bytes")
 		}
 
-		up, err := c.ds.UploadRate(a)
-		if err != nil {
-			return c.UploadRateBytes, err
+		up, ok := a[4].(int64)
+		if !ok {
+			return c.UploadRateBytes, fmt.Errorf("failed to convert Upload Rate Bytes")
 		}
 
-		upTotal, err := c.ds.UploadTotal(a)
-		if err != nil {
-			return c.UploadTotalBytes, err
+		upTotal, ok := a[5].(int64)
+		if !ok {
+			return c.UploadTotalBytes, fmt.Errorf("failed to convert Upload Total Bytes")
 		}
 
 		ch <- prometheus.MustNewConstMetric(

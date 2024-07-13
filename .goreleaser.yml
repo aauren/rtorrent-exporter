@@ -1,0 +1,57 @@
+---
+release:
+  draft: true
+  prerelease: auto
+  header: |
+    ## Summary
+
+    ## Contributions
+
+before:
+  hooks:
+    - go mod download
+builds:
+  - main: ./cmd/rtorrent_exporter/main.go
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+      - windows
+      - darwin
+    goarch:
+      - arm64
+      - arm
+      - amd64
+      - 386
+      - s390x
+      - ppc64le
+      - riscv64
+    goarm:
+      - 6
+      - 7
+archives:
+  - id: primary
+    name_template: >-
+      {{ .ProjectName }}_
+      {{- if eq .Os "darwin" }}MacOS
+      {{- else }}{{ title .Os }}{{end}}_
+      {{- if eq .Arch "386" }}i386
+      {{- else }}{{ .Arch }}{{end}}
+      {{ with .Arm }}v{{ . }}{{ end }}
+    format_overrides:
+      - goos: windows
+        format: zip
+    files:
+      - LICENSE*
+      - README*
+    wrap_in_directory: rtorrent-exporter-{{ .Version }}
+checksum:
+  name_template: "checksums.txt"
+snapshot:
+  name_template: "{{ .Tag }}-next"
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"

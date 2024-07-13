@@ -6,3 +6,4 @@ go.work*
 .git
 .gitignore
 compose.yaml
+dist

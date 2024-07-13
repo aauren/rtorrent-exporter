@@ -1,3 +1,4 @@
 main
 rtorrent_exporter
 .vscode
+dist

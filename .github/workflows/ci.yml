@@ -38,7 +38,7 @@ jobs:
 
     - name: Install dependencies
       run: |
-        go get .
+        go get ./...
 
     - name: Build
       run: go build -v -ldflags '-s -w' ./... cmd/rtorrent_exporter/main.go

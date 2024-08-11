@@ -8,7 +8,7 @@ Specific additions made by this fork:
 
 * Support self-signed (non-official) certificates
 * Allow setting timeouts on all HTTP / XMLRPC calls
-* Allow disabling high-cardinality metrics (`-rtorrent.collect.active`)
+* Allow disabling high-cardinality metrics (`-rtorrent.downloads.collect.details`)
 * Improve performance for greater numbers of torrents (especially helpful if you have >100 torrents)
 
 Command `rtorrent-exporter` provides a Prometheus exporter for rTorrent.
@@ -27,7 +27,7 @@ Available flags for `rtorrent-exporter` include:
 Usage of ./rtorrent-exporter:
   -rtorrent.addr string
         address of rTorrent XML-RPC server
-  -rtorrent.collect.active
+  -rtorrent.downloads.collect.details
         [optional] collect rate and total bytes for each torrent (greatly increases metric cardinality) (defaults: true) (default true)
   -rtorrent.insecure
         [optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)

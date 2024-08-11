@@ -22,7 +22,7 @@ type DownloadsSource interface {
 	Seeding() ([]string, error)
 	Leeching() ([]string, error)
 	Active() ([]string, error)
-	ActiveWithDetails() ([][]any, error)
+	DownloadWithDetails([]string) ([][]any, error)
 
 	BaseFilename(infoHash string) (string, error)
 	DownloadRate(infoHash string) (int, error)
@@ -51,15 +51,24 @@ type DownloadsCollector struct {
 
 	ds DownloadsSource
 
-	collectActiveDown bool
+	collectOpts *CollectorOpts
 }
+
+type CollectorOpts struct {
+	DownloadDetails bool
+	CollectURLs     bool
+}
+
+var (
+	defaultActiveCommands = []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+)
 
 // Verify that DownloadsCollector implements the prometheus.Collector interface.
 var _ prometheus.Collector = &DownloadsCollector{}
 
 // NewDownloadsCollector creates a new DownloadsCollector which collects metrics
 // regarding rTorrent downloads.
-func NewDownloadsCollector(ds DownloadsSource, collectActive bool) *DownloadsCollector {
+func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *DownloadsCollector {
 	const (
 		subsystem = "downloads"
 	)
@@ -135,10 +144,10 @@ func NewDownloadsCollector(ds DownloadsSource, collectActive bool) *DownloadsCol
 
 		ds: ds,
 
-		collectActiveDown: collectActive,
+		collectOpts: &collectorOpts,
 	}
 
-	if collectActive {
+	if downCollector.collectOpts.DownloadDetails {
 		downCollector.DownloadRateBytes = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "download_rate_bytes"),
 			"Current download rate in bytes.",
@@ -178,8 +187,8 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 		return desc, err
 	}
 
-	if c.collectActiveDown {
-		if desc, err := c.collectActiveDownloads(ch); err != nil {
+	if c.collectOpts.DownloadDetails {
+		if desc, err := c.collectDownloadDetails(ch); err != nil {
 			return desc, err
 		}
 	}
@@ -281,10 +290,12 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 	return nil, nil
 }
 
-// collectActiveDownloads collects information about active downloads,
+// collectDownloadDetails collects information about active downloads,
 // which are uploading and/or downloading data.
-func (c *DownloadsCollector) collectActiveDownloads(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
-	active, err := c.ds.ActiveWithDetails()
+func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
+	cmds := c.getDownloadDetailCommands()
+
+	active, err := c.ds.DownloadWithDetails(cmds)
 	if err != nil {
 		return c.DownloadsActive, err
 	}
@@ -298,70 +309,92 @@ func (c *DownloadsCollector) collectActiveDownloads(ch chan<- prometheus.Metric)
 	// Here active should be a slice of slices, where each inner slice looks like:
 	// [hash, name, down.rate, down.total, up.rate, up.total]
 	for _, a := range active {
-		hash, ok := a[0].(string)
-		if !ok {
+		err := c.parseDownloadDetailsMetrics(a, cmds, ch)
+		if err != nil {
 			return c.DownloadRateBytes, err
 		}
-		name, ok := a[1].(string)
-		if !ok {
-			return c.DownloadRateBytes, err
-		}
-
-		labels := []string{
-			hash,
-			name,
-		}
-
-		down, ok := a[2].(int64)
-		if !ok {
-			return c.DownloadRateBytes, fmt.Errorf("failed to convert Download Rate Bytes")
-		}
-
-		downTotal, ok := a[3].(int64)
-		if !ok {
-			return c.DownloadTotalBytes, fmt.Errorf("failed to convert Download Total Bytes")
-		}
-
-		up, ok := a[4].(int64)
-		if !ok {
-			return c.UploadRateBytes, fmt.Errorf("failed to convert Upload Rate Bytes")
-		}
-
-		upTotal, ok := a[5].(int64)
-		if !ok {
-			return c.UploadTotalBytes, fmt.Errorf("failed to convert Upload Total Bytes")
-		}
-
-		ch <- prometheus.MustNewConstMetric(
-			c.DownloadRateBytes,
-			prometheus.GaugeValue,
-			float64(down),
-			labels...,
-		)
-
-		ch <- prometheus.MustNewConstMetric(
-			c.DownloadTotalBytes,
-			prometheus.GaugeValue,
-			float64(downTotal),
-			labels...,
-		)
-
-		ch <- prometheus.MustNewConstMetric(
-			c.UploadRateBytes,
-			prometheus.GaugeValue,
-			float64(up),
-			labels...,
-		)
-
-		ch <- prometheus.MustNewConstMetric(
-			c.UploadTotalBytes,
-			prometheus.GaugeValue,
-			float64(upTotal),
-			labels...,
-		)
 	}
 
 	return nil, nil
+}
+
+func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string, ch chan<- prometheus.Metric) error {
+	labels, err := c.gatherDownloadDetailLabels(a)
+	if err != nil {
+		return err
+	}
+
+	for idx, v := range a[2:] {
+		switch cmds[idx] {
+		case "d.down.rate=":
+			down, ok := v.(int64)
+			if !ok {
+				return fmt.Errorf("failed to convert Download Rate Bytes")
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.DownloadRateBytes,
+				prometheus.GaugeValue,
+				float64(down),
+				labels...,
+			)
+		case "d.down.total=":
+			downTotal, ok := v.(int64)
+			if !ok {
+				return fmt.Errorf("failed to convert Download Total Bytes")
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.DownloadTotalBytes,
+				prometheus.GaugeValue,
+				float64(downTotal),
+				labels...,
+			)
+		case "d.up.rate=":
+			up, ok := v.(int64)
+			if !ok {
+				return fmt.Errorf("failed to convert Upload Rate Bytes")
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.UploadRateBytes,
+				prometheus.GaugeValue,
+				float64(up),
+				labels...,
+			)
+		case "d.up.total=":
+			upTotal, ok := v.(int64)
+			if !ok {
+				return fmt.Errorf("failed to convert Upload Total Bytes")
+			}
+			ch <- prometheus.MustNewConstMetric(
+				c.UploadTotalBytes,
+				prometheus.GaugeValue,
+				float64(upTotal),
+				labels...,
+			)
+		}
+	}
+	return nil
+}
+
+func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]string, error) {
+	hash, ok := torSlice[0].(string)
+	if !ok {
+		return nil, fmt.Errorf("failed to convert torrent hash to string")
+	}
+	name, ok := torSlice[1].(string)
+	if !ok {
+		return nil, fmt.Errorf("failed to convert torrent name to string")
+	}
+
+	labels := []string{
+		hash,
+		name,
+	}
+
+	return labels, nil
+}
+
+func (c *DownloadsCollector) getDownloadDetailCommands() []string {
+	return defaultActiveCommands
 }
 
 // Describe sends the descriptors of each metric over to the provided channel.

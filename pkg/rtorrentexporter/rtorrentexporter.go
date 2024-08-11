@@ -29,10 +29,10 @@ type Exporter struct {
 var _ prometheus.Collector = &Exporter{}
 
 // New creates a new Exporter which collects metrics from one or mote sites.
-func New(c *rtorrent.Client, collectActive bool) *Exporter {
+func New(c *rtorrent.Client, collectOpts CollectorOpts) *Exporter {
 	return &Exporter{
 		collectors: []prometheus.Collector{
-			NewDownloadsCollector(c.Downloads, collectActive),
+			NewDownloadsCollector(c.Downloads, collectOpts),
 		},
 	}
 }

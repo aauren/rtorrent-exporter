@@ -377,11 +377,15 @@ func (c *DownloadsCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.DownloadsSeeding,
 		c.DownloadsLeeching,
 		c.DownloadsActive,
+	}
 
-		c.DownloadRateBytes,
-		c.DownloadTotalBytes,
-		c.UploadRateBytes,
-		c.UploadTotalBytes,
+	if c.collectOpts.DownloadDetails {
+		ds = append(ds,
+			c.DownloadRateBytes,
+			c.DownloadTotalBytes,
+			c.UploadRateBytes,
+			c.UploadTotalBytes,
+		)
 	}
 
 	for _, d := range ds {

@@ -32,7 +32,7 @@ var (
 		"[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
 	rtorrentTimeout = flag.Duration("rtorrent.timeout", 10*time.Second,
 		"[optional] duration of how long to wait before timing out rtorrent request (defaults: 10s)")
-	rtorrentCollectActive = flag.Bool("rtorrent.collect.active", true,
+	rtorrentDownloadsCollectDetails = flag.Bool("rtorrent.downloads.collect.details", true,
 		"[optional] collect rate and total bytes for each torrent (greatly increases metric cardinality) (defaults: true)")
 )
 
@@ -74,7 +74,11 @@ func main() {
 		log.Fatalf("cannot create rTorrent client: %v", err)
 	}
 
-	prometheus.MustRegister(rtorrentexporter.New(c, *rtorrentCollectActive))
+	colOpts := rtorrentexporter.CollectorOpts{
+		DownloadDetails: *rtorrentDownloadsCollectDetails,
+	}
+
+	prometheus.MustRegister(rtorrentexporter.New(c, colOpts))
 
 	http.Handle(*metricsPath, promhttp.Handler())
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -82,9 +86,9 @@ func main() {
 	})
 
 	log.Printf("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
-		"(authentication: %v) (insecure: %v) (timeout: %v) (collect active: %v)",
+		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v)",
 		*telemetryAddr, *rtorrentAddr, *telemetryTimeout,
-		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentCollectActive)
+		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentDownloadsCollectDetails)
 
 	server := &http.Server{
 		Addr:              *telemetryAddr,

@@ -27,7 +27,7 @@ services:
       # - "-telemetry.timeout"
       # - "5s"
       # If you want to disable high cardinality metrics, but lose some visibility into individual torrent metrics
-      # - "-rtorrent.collect.active"
+      # - "-rtorrent.downloads.collect.details"
       # - "false"
 networks:
   rtorrent_exporter:

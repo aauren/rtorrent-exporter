@@ -3,7 +3,7 @@ module github.com/aauren/rtorrent-exporter
 go 1.22
 
 require (
-	github.com/aauren/rtorrent v0.0.0-20240713221044-0a07e4de6583
+	github.com/aauren/rtorrent v0.1.0
 	github.com/prometheus/client_golang v1.19.1
 	github.com/stretchr/testify v1.9.0
 )
@@ -20,7 +20,7 @@ require (
 	github.com/prometheus/common v0.55.0 // indirect
 	github.com/prometheus/procfs v0.15.1 // indirect
 	github.com/stretchr/objx v0.5.2 // indirect
-	golang.org/x/sys v0.22.0 // indirect
+	golang.org/x/sys v0.24.0 // indirect
 	google.golang.org/protobuf v1.34.2 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 )

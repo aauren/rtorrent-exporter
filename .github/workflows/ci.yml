@@ -45,6 +45,9 @@ jobs:
       env:
         CGO_ENABLED: "0"
 
+    - name: Test
+      run: go test -v ./...
+
   # Builds Container only if a tag or a pull request from a source branch within the repository
   ci-build-container:
     runs-on: ubuntu-latest

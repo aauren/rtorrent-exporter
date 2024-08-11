@@ -39,9 +39,7 @@ var (
 func main() {
 	flag.Parse()
 
-	if *rtorrentAddr == "" {
-		log.Fatal("address of rTorrent XML-RPC server must be specified with '-rtorrent.addr' flag")
-	}
+	validateFlags()
 
 	// Optionally enable HTTP Basic authentication
 	var rt http.RoundTripper
@@ -94,6 +92,18 @@ func main() {
 	}
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("cannot start rTorrent exporter: %s", err)
+	}
+}
+
+func validateFlags() {
+	if *rtorrentAddr == "" {
+		log.Fatal("address of rTorrent XML-RPC server must be specified with '-rtorrent.addr' flag")
+	}
+	if *rtorrentTimeout <= 0 {
+		log.Fatal("timeout for rTorrent request must be greater than 0")
+	}
+	if *telemetryTimeout <= 0 {
+		log.Fatal("timeout for telemetry request must be greater than 0")
 	}
 }
 

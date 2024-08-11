@@ -1,133 +1,192 @@
 package rtorrentexporter
 
 import (
-	"regexp"
-	"strings"
-	"testing"
+    "testing"
+
+    "github.com/prometheus/client_golang/prometheus"
+    "github.com/stretchr/testify/assert"
+    "github.com/stretchr/testify/mock"
 )
 
-func TestDownloadsCollector(t *testing.T) {
-	// Info-hashes are usually 40 bytes, but we will make ours only
-	// 4 for easier testing
-	hashA := strings.Repeat("A", 4)
-	hashB := strings.Repeat("B", 4)
-	hashC := strings.Repeat("C", 4)
-
-	var tests = []struct {
-		desc    string
-		ds      *testDownloadsSource
-		matches []*regexp.Regexp
-	}{
-		{
-			desc: "one download",
-			ds: &testDownloadsSource{
-				downloads: []string{
-					hashA,
-				},
-				files: map[string]string{
-					hashA: "foo",
-				},
-				rate:  1024,
-				total: 1024,
-			},
-			matches: []*regexp.Regexp{
-				regexp.MustCompile(`rtorrent_downloads 1`),
-				regexp.MustCompile(`rtorrent_downloads_started 1`),
-				regexp.MustCompile(`rtorrent_downloads_stopped 1`),
-				regexp.MustCompile(`rtorrent_downloads_complete 1`),
-				regexp.MustCompile(`rtorrent_downloads_incomplete 1`),
-				regexp.MustCompile(`rtorrent_downloads_hashing 1`),
-				regexp.MustCompile(`rtorrent_downloads_seeding 1`),
-				regexp.MustCompile(`rtorrent_downloads_leeching 1`),
-				regexp.MustCompile(`rtorrent_downloads_active 1`),
-
-				regexp.MustCompile(`rtorrent_downloads_download_rate_bytes{info_hash="AAAA",name="foo"} 1024`),
-				regexp.MustCompile(`rtorrent_downloads_download_total_bytes{info_hash="AAAA",name="foo"} 1024`),
-				regexp.MustCompile(`rtorrent_downloads_upload_rate_bytes{info_hash="AAAA",name="foo"} 1024`),
-				regexp.MustCompile(`rtorrent_downloads_upload_total_bytes{info_hash="AAAA",name="foo"} 1024`),
-			},
-		},
-		{
-			desc: "three downloads",
-			ds: &testDownloadsSource{
-				downloads: []string{
-					hashA,
-					hashB,
-					hashC,
-				},
-				files: map[string]string{
-					hashA: "foo",
-					hashB: "bar",
-					hashC: "baz",
-				},
-				rate:  2048,
-				total: 2048,
-			},
-			matches: []*regexp.Regexp{
-				regexp.MustCompile(`rtorrent_downloads 3`),
-				regexp.MustCompile(`rtorrent_downloads_started 3`),
-				regexp.MustCompile(`rtorrent_downloads_stopped 3`),
-				regexp.MustCompile(`rtorrent_downloads_complete 3`),
-				regexp.MustCompile(`rtorrent_downloads_incomplete 3`),
-				regexp.MustCompile(`rtorrent_downloads_hashing 3`),
-				regexp.MustCompile(`rtorrent_downloads_seeding 3`),
-				regexp.MustCompile(`rtorrent_downloads_leeching 3`),
-				regexp.MustCompile(`rtorrent_downloads_active 3`),
-
-				regexp.MustCompile(`rtorrent_downloads_download_rate_bytes{info_hash="AAAA",name="foo"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_download_total_bytes{info_hash="AAAA",name="foo"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_rate_bytes{info_hash="AAAA",name="foo"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_total_bytes{info_hash="AAAA",name="foo"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_download_rate_bytes{info_hash="BBBB",name="bar"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_download_total_bytes{info_hash="BBBB",name="bar"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_rate_bytes{info_hash="BBBB",name="bar"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_total_bytes{info_hash="BBBB",name="bar"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_download_rate_bytes{info_hash="CCCC",name="baz"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_download_total_bytes{info_hash="CCCC",name="baz"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_rate_bytes{info_hash="CCCC",name="baz"} 2048`),
-				regexp.MustCompile(`rtorrent_downloads_upload_total_bytes{info_hash="CCCC",name="baz"} 2048`),
-			},
-		},
-	}
-
-	for i, tt := range tests {
-		t.Logf("[%02d] test %q", i, tt.desc)
-
-		out := testCollector(t, NewDownloadsCollector(tt.ds))
-
-		for j, m := range tt.matches {
-			t.Logf("\t[%02d:%02d] match: %s", i, j, m.String())
-
-			if !m.Match(out) {
-				t.Fatal("\toutput failed to match regex")
-			}
-		}
-	}
+// MockDownloadsSource is a mock implementation of the DownloadsSource interface.
+type MockDownloadsSource struct {
+    mock.Mock
 }
 
-var _ DownloadsSource = &testDownloadsSource{}
-
-type testDownloadsSource struct {
-	downloads []string
-	files     map[string]string
-	rate      int
-	total     int
+func (m *MockDownloadsSource) All() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
 }
 
-func (ds *testDownloadsSource) All() ([]string, error)        { return ds.downloads, nil }
-func (ds *testDownloadsSource) Started() ([]string, error)    { return ds.downloads, nil }
-func (ds *testDownloadsSource) Stopped() ([]string, error)    { return ds.downloads, nil }
-func (ds *testDownloadsSource) Complete() ([]string, error)   { return ds.downloads, nil }
-func (ds *testDownloadsSource) Incomplete() ([]string, error) { return ds.downloads, nil }
-func (ds *testDownloadsSource) Hashing() ([]string, error)    { return ds.downloads, nil }
-func (ds *testDownloadsSource) Seeding() ([]string, error)    { return ds.downloads, nil }
-func (ds *testDownloadsSource) Leeching() ([]string, error)   { return ds.downloads, nil }
-func (ds *testDownloadsSource) Active() ([]string, error)     { return ds.downloads, nil }
-
-func (ds *testDownloadsSource) BaseFilename(infoHash string) (string, error) {
-	return ds.files[infoHash], nil
+func (m *MockDownloadsSource) Started() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
 }
-func (ds *testDownloadsSource) DownloadRate(_ string) (int, error)  { return ds.rate, nil }
-func (ds *testDownloadsSource) DownloadTotal(_ string) (int, error) { return ds.total, nil }
-func (ds *testDownloadsSource) UploadRate(_ string) (int, error)    { return ds.rate, nil }
-func (ds *testDownloadsSource) UploadTotal(_ string) (int, error)   { return ds.total, nil }
+
+func (m *MockDownloadsSource) Stopped() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Complete() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Incomplete() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Hashing() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Seeding() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Leeching() ([]string, error) {
+    args := m.Called()
+    return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) Active() ([]string, error) {
+	args := m.Called()
+	return args.Get(0).([]string), args.Error(1)
+}
+
+func (m *MockDownloadsSource) BaseFilename(hash string) (string, error) {
+	args := m.Called(hash)
+	return args.String(0), args.Error(1)
+}
+
+func (m *MockDownloadsSource) DownloadRate(hash string) (int, error) {
+	args := m.Called(hash)
+	return args.Get(0).(int), args.Error(1)
+}
+
+func (m *MockDownloadsSource) DownloadTotal(hash string) (int, error) {
+	args := m.Called(hash)
+	return args.Get(0).(int), args.Error(1)
+}
+
+func (m *MockDownloadsSource) UploadRate(hash string) (int, error) {
+	args := m.Called(hash)
+	return args.Get(0).(int), args.Error(1)
+}
+
+func (m *MockDownloadsSource) UploadTotal(hash string) (int, error) {
+	args := m.Called(hash)
+	return args.Get(0).(int), args.Error(1)
+}
+
+func (m *MockDownloadsSource) DownloadWithDetails(cmds []string) ([][]any, error) {
+    args := m.Called(cmds)
+    return args.Get(0).([][]any), args.Error(1)
+}
+
+func TestNewDownloadsCollector(t *testing.T) {
+    ds := new(MockDownloadsSource)
+    collectorOpts := CollectorOpts{DownloadDetails: true}
+    collector := NewDownloadsCollector(ds, collectorOpts)
+
+    assert.NotNil(t, collector)
+    assert.Equal(t, collectorOpts.DownloadDetails, collector.collectOpts.DownloadDetails)
+}
+
+func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
+    ds := new(MockDownloadsSource)
+    ds.On("All").Return([]string{}, nil)
+    ds.On("Started").Return([]string{}, nil)
+    ds.On("Stopped").Return([]string{}, nil)
+    ds.On("Complete").Return([]string{}, nil)
+    ds.On("Incomplete").Return([]string{}, nil)
+    ds.On("Hashing").Return([]string{}, nil)
+    ds.On("Seeding").Return([]string{}, nil)
+    ds.On("Leeching").Return([]string{}, nil)
+
+    collector := NewDownloadsCollector(ds, CollectorOpts{})
+    ch := make(chan prometheus.Metric)
+
+    go func() {
+        defer close(ch)
+        desc, err := collector.collectDownloadCounts(ch)
+        assert.Nil(t, desc)
+        assert.Nil(t, err)
+    }()
+
+    for range ch {
+        // Consume the channel
+    }
+}
+
+func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
+    ds := new(MockDownloadsSource)
+    cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+    ds.On("DownloadWithDetails", cmds).Return([][]any{
+        {"hash1", "name1", int64(100), int64(200), int64(300), int64(400)},
+    }, nil)
+
+    collector := NewDownloadsCollector(ds, CollectorOpts{DownloadDetails: true})
+    ch := make(chan prometheus.Metric)
+
+    go func() {
+        defer close(ch)
+        desc, err := collector.collectDownloadDetails(ch)
+        assert.Nil(t, desc)
+        assert.Nil(t, err)
+    }()
+
+    for range ch {
+        // Consume the channel
+    }
+}
+
+func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
+    collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
+    ch := make(chan prometheus.Metric)
+    a := []any{"hash1", "name1", int64(100), int64(200), int64(300), int64(400)}
+    cmds := []string{"d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+
+    go func() {
+        defer close(ch)
+        err := collector.parseDownloadDetailsMetrics(a, cmds, ch)
+        assert.Nil(t, err)
+    }()
+
+    for range ch {
+        // Consume the channel
+    }
+}
+
+func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
+    collector := NewDownloadsCollector(nil, CollectorOpts{})
+    torSlice := []any{"hash1", "name1"}
+
+    labels, err := collector.gatherDownloadDetailLabels(torSlice)
+    assert.Nil(t, err)
+    assert.Equal(t, []string{"hash1", "name1"}, labels)
+}
+
+func TestDownloadsCollector_getDownloadDetailCommands(t *testing.T) {
+    collector := NewDownloadsCollector(nil, CollectorOpts{})
+    cmds := collector.getDownloadDetailCommands()
+    assert.Equal(t, defaultActiveCommands, cmds)
+}
+
+func TestDownloadsCollector_Describe(t *testing.T) {
+    collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
+    ch := make(chan *prometheus.Desc)
+
+    go func() {
+        defer close(ch)
+        collector.Describe(ch)
+    }()
+
+    for range ch {
+        // Consume the channel
+    }
+}

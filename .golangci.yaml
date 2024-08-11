@@ -1,0 +1,86 @@
+run:
+  timeout: 5m
+linters:
+  enable:
+    - bodyclose
+    - depguard
+    - dogsled
+    - dupl
+    - durationcheck
+    - exportloopref
+    - exhaustive
+    - gochecknoinits
+    - goconst
+    - gocritic
+    - gofmt
+    - goimports
+    - mnd
+    - gosec
+    - govet
+    - lll
+    - misspell
+    - nakedret
+    - noctx
+    - nolintlint
+    - stylecheck
+    - unconvert
+    - unparam
+linters-settings:
+  lll:
+    line-length: 140
+  depguard:
+    rules:
+      prevent_unmaintained_packages:
+        list-mode: strict
+        files:
+          - "$all"
+          - "!$test"
+        allow:
+          - "$gostd"
+          - github.com/aauren/rtorrent/rtorrent
+          - github.com/prometheus
+issues:
+  exclude-rules:
+    # Excluding single digits from magic number detector because it produces too many obvious results (like klog)
+    - text: "Magic number: [0-9]{1},"
+      linters:
+        - mnd
+    # Exclude file masks from magic number detector because these numbers are obvious
+    - text: "Magic number: 0[0-7]{3},"
+      linters:
+        - mnd
+    # Exlude IP masks netmasks as substituting them for constants only makes these less obvious
+    - text: "Magic number: 255,"
+      linters:
+        - mnd
+    # Exclude IP netmasks from magic number detector because these numbers are obvious
+    - text: "Magic number: 32,"
+      linters:
+        - mnd
+    # Exclude decimal bases from magic number detector because these numbers are obvious
+    - text: "Magic number: 10,"
+      linters:
+        - mnd
+    # Exclude file mask security findings as we are always intentional about the file masks we use
+    #- text: "G306:"
+    #  linters:
+    #    - gosec
+    # Exlude tests from long line linter
+    - linters:
+        - lll
+      path: _test\.go
+    # Don't worry about appendAssign issues, assume that we know what we are doing when we append to different slices
+    - text: "appendAssign"
+      linters:
+        - gocritic
+    - linters:
+        - gochecknoinits
+      path: ".*/cmd/.*\\.go"
+  # always show all issues rather than only showing 50 at a time
+  max-issues-per-linter: 0
+  # always show all issues of a type rather than showing 3
+  max-same-issues: 0
+#output:
+  #format: tab
+  #print-issued-lines: true
+  #print-linter-name: true

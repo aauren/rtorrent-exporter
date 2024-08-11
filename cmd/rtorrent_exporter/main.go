@@ -11,8 +11,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter"
+	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 )

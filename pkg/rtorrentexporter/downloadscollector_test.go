@@ -107,6 +107,7 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 	ds.On("Hashing").Return([]string{}, nil)
 	ds.On("Seeding").Return([]string{}, nil)
 	ds.On("Leeching").Return([]string{}, nil)
+	ds.On("Active").Return([]string{}, nil)
 
 	collector := NewDownloadsCollector(ds, CollectorOpts{})
 	ch := make(chan prometheus.Metric)

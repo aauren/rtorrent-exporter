@@ -199,11 +199,6 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 // collectDownloadCounts collects metrics which track number of downloads in
 // various possible states.
 func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
-	all, err := c.ds.All()
-	if err != nil {
-		return c.Downloads, err
-	}
-
 	started, err := c.ds.Started()
 	if err != nil {
 		return c.DownloadsStarted, err
@@ -239,11 +234,10 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 		return c.DownloadsLeeching, err
 	}
 
-	ch <- prometheus.MustNewConstMetric(
-		c.Downloads,
-		prometheus.GaugeValue,
-		float64(len(all)),
-	)
+	active, err := c.ds.Active()
+	if err != nil {
+		return c.DownloadsActive, err
+	}
 
 	ch <- prometheus.MustNewConstMetric(
 		c.DownloadsStarted,
@@ -287,6 +281,12 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 		float64(len(leeching)),
 	)
 
+	ch <- prometheus.MustNewConstMetric(
+		c.DownloadsActive,
+		prometheus.GaugeValue,
+		float64(len(active)),
+	)
+
 	return nil, nil
 }
 
@@ -295,20 +295,20 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
 	cmds := c.getDownloadDetailCommands()
 
-	active, err := c.ds.DownloadWithDetails(cmds)
+	all, err := c.ds.DownloadWithDetails(cmds)
 	if err != nil {
 		return c.DownloadsActive, err
 	}
 
 	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsActive,
+		c.Downloads,
 		prometheus.GaugeValue,
-		float64(len(active)),
+		float64(len(all)),
 	)
 
 	// Here active should be a slice of slices, where each inner slice looks like:
 	// [hash, name, down.rate, down.total, up.rate, up.total]
-	for _, a := range active {
+	for _, a := range all {
 		err := c.parseDownloadDetailsMetrics(a, cmds, ch)
 		if err != nil {
 			return c.DownloadRateBytes, err

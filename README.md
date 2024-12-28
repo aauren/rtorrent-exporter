@@ -1,6 +1,11 @@
 rtorrent-exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent-exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent_exporter) ![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
 =================
 
+A metric exporter for rtorrent which scrapes the XML-RPC API that rtorrent exposes and then publishes it as metrics.
+
+This is an example of the types of Grafana dashboards that can be made from these metrics:
+![Grafana Example](/docs/rtorrent-screenshot.png)
+
 This is an updated fork of [mdlayher/rtorrent_exporter](https://github.com/mdlayher/rtorrent_exporter). Much appreciation goes to them for
 pioneering this package and putting effort into getting it off the ground.
 
@@ -72,10 +77,10 @@ To start, run:
 docker compose up -d
 ```
 
-Sample
+Grafana Dashbaord
 ------
 
-Here is a screenshot of a sample dashboard created using [`grafana`](https://github.com/grafana/grafana)
-with metrics from exported from `rtorrent_exporter`.
+There is an example Grafana dashboard that user's can use contained within this repository at [grafana-dashboard.json](/resources/grafana-dashboard.json)
 
-![sample](https://cloud.githubusercontent.com/assets/1926905/13891308/bad263be-ed26-11e5-9601-9d770d95c538.png)
+You can also find an example of the dashboard on Grafana's public dashboard service [rtorrent-exporter](https://grafana.com/grafana/dashboards/22581)
+

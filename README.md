@@ -27,7 +27,7 @@ Usage
 
 Available flags for `rtorrent-exporter` include:
 
-```
+```sh
 % ./rtorrent-exporter --help
 Usage of ./rtorrent-exporter:
   -rtorrent.addr string
@@ -52,7 +52,7 @@ Usage of ./rtorrent-exporter:
 
 An example of using `rtorrent-exporter`:
 
-```
+```sh
 $ ./rtorrent-exporter -rtorrent.addr http://127.0.0.1/RPC2
 2016/03/09 17:39:40 starting rTorrent exporter on ":9135" for server "http://127.0.0.1/RPC2"
 ```
@@ -62,7 +62,7 @@ Docker
 
 Docker Hub repo can be found here: [rtorrent-exporter](https://hub.docker.com/repository/docker/aauren/rtorrent-exporter/general)
 
-```
+```sh
 docker run -ti --rm -p 9135:9135 --add-host=host.docker.internal:host-gateway "aauren/rtorrent-exporter:latest" -rtorrent.addr https://host.docker.internal/RPC2 -rtorrent.username "<http_basic_auth_user>" -rtorrent.password "<http_basic_auth_pass>" "-rtorrent.insecure" true
 ```
 
@@ -73,7 +73,7 @@ See example here: [compose.yml](compose.yaml)
 
 To start, run:
 
-```
+```sh
 docker compose up -d
 ```
 
@@ -83,4 +83,3 @@ Grafana Dashbaord
 There is an example Grafana dashboard that user's can use contained within this repository at [grafana-dashboard.json](/resources/grafana-dashboard.json)
 
 You can also find an example of the dashboard on Grafana's public dashboard service [rtorrent-exporter](https://grafana.com/grafana/dashboards/22581)
-

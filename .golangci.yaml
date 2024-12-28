@@ -3,11 +3,11 @@ run:
 linters:
   enable:
     - bodyclose
+    - copyloopvar
     - depguard
     - dogsled
     - dupl
     - durationcheck
-    - exportloopref
     - exhaustive
     - gochecknoinits
     - goconst

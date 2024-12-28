@@ -324,8 +324,13 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		return err
 	}
 
-	for idx, v := range a[2:] {
-		switch cmds[idx] {
+	// collect metrics starting without hash or name (starting at index 2 and beyond), cannot put this directly in range because it creates
+	// a new slice starting with index 0 which makes it not able to match the correct command
+	abbrA := a[2:]
+	abbrCommands := cmds[2:]
+
+	for idx, v := range abbrA {
+		switch abbrCommands[idx] {
 		case "d.down.rate=":
 			down, ok := v.(int64)
 			if !ok {

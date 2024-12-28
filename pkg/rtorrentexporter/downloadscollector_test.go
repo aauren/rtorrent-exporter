@@ -150,7 +150,7 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
 	ch := make(chan prometheus.Metric)
 	a := []any{"hash1", "name1", int64(100), int64(200), int64(300), int64(400)}
-	cmds := []string{"d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+	cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
 
 	go func() {
 		defer close(ch)

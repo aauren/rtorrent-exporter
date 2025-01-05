@@ -21,7 +21,7 @@ var (
 	telemetryAddr    = flag.String("telemetry.addr", ":9135", "host:port for rTorrent exporter")
 	metricsPath      = flag.String("telemetry.path", "/metrics", "URL path for surfacing collected metrics")
 	telemetryTimeout = flag.Duration("telemetry.timeout", 10*time.Second,
-		"[optional] duration of how long to wait to receive http headers on telemetry addr (defaults: 10s)")
+		"[optional] duration of how long to wait to receive http headers on telemetry addr")
 
 	rtorrentAddr     = flag.String("rtorrent.addr", "", "address of rTorrent XML-RPC server")
 	rtorrentUsername = flag.String("rtorrent.username", "",
@@ -31,9 +31,11 @@ var (
 	rtorrentInsecure = flag.Bool("rtorrent.insecure", false,
 		"[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
 	rtorrentTimeout = flag.Duration("rtorrent.timeout", 10*time.Second,
-		"[optional] duration of how long to wait before timing out rtorrent request (defaults: 10s)")
+		"[optional] duration of how long to wait before timing out rtorrent request")
 	rtorrentDownloadsCollectDetails = flag.Bool("rtorrent.downloads.collect.details", true,
-		"[optional] collect rate and total bytes for each torrent (greatly increases metric cardinality) (defaults: true)")
+		"[optional] collect rate and total bytes for each torrent (greatly increases metric cardinality)")
+	rtorrentDownloadsCollectMessages = flag.Bool("rtorrent.downloads.collect.messages", true,
+		"[optional] collect messages for each torrent (greatly increases metric cardinality)")
 )
 
 func main() {
@@ -75,7 +77,8 @@ func main() {
 	}
 
 	colOpts := rtorrentexporter.CollectorOpts{
-		DownloadDetails: *rtorrentDownloadsCollectDetails,
+		DownloadDetails:  *rtorrentDownloadsCollectDetails,
+		DownloadMessages: *rtorrentDownloadsCollectMessages,
 	}
 
 	prometheus.MustRegister(rtorrentexporter.New(c, colOpts))
@@ -86,9 +89,11 @@ func main() {
 	})
 
 	log.Printf("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
-		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v)",
+		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v)",
 		*telemetryAddr, *rtorrentAddr, *telemetryTimeout,
-		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentDownloadsCollectDetails)
+		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentDownloadsCollectDetails,
+		*rtorrentDownloadsCollectMessages,
+	)
 
 	server := &http.Server{
 		Addr:              *telemetryAddr,

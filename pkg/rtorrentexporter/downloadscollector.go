@@ -43,11 +43,14 @@ type DownloadsCollector struct {
 	DownloadsSeeding    *prometheus.Desc
 	DownloadsLeeching   *prometheus.Desc
 	DownloadsActive     *prometheus.Desc
+	DownloadsError      *prometheus.Desc
 
 	DownloadRateBytes  *prometheus.Desc
 	DownloadTotalBytes *prometheus.Desc
 	UploadRateBytes    *prometheus.Desc
 	UploadTotalBytes   *prometheus.Desc
+
+	DownloadMessages *prometheus.Desc
 
 	ds DownloadsSource
 
@@ -55,12 +58,14 @@ type DownloadsCollector struct {
 }
 
 type CollectorOpts struct {
-	DownloadDetails bool
-	CollectURLs     bool
+	DownloadDetails  bool
+	DownloadMessages bool
+	CollectURLs      bool
 }
 
 var (
-	defaultActiveCommands = []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+	defaultActiveCommands = []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total=",
+		"d.message="}
 )
 
 // Verify that DownloadsCollector implements the prometheus.Collector interface.
@@ -173,6 +178,23 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 			prometheus.BuildFQName(namespace, subsystem, "upload_total_bytes"),
 			"Total Bytes uploaded.",
 			labels,
+			nil,
+		)
+
+		downCollector.DownloadsError = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, subsystem, "error"),
+			"Number of downloads with tracker errors.",
+			nil,
+			nil,
+		)
+	}
+
+	if downCollector.collectOpts.DownloadMessages {
+		msgLabels := append(labels, "message")
+		downCollector.DownloadMessages = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, subsystem, "messages"),
+			"Tracker messages for downloads.",
+			msgLabels,
 			nil,
 		)
 	}
@@ -306,22 +328,34 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 		float64(len(all)),
 	)
 
+	failedDownloads := 0
+
 	// Here active should be a slice of slices, where each inner slice looks like:
 	// [hash, name, down.rate, down.total, up.rate, up.total]
 	for _, a := range all {
-		err := c.parseDownloadDetailsMetrics(a, cmds, ch)
+		hadErrorMessage, err := c.parseDownloadDetailsMetrics(a, cmds, ch)
 		if err != nil {
 			return c.DownloadRateBytes, err
 		}
+		if hadErrorMessage {
+			failedDownloads++
+		}
 	}
+
+	// Finally emit the total number of errored downloads
+	ch <- prometheus.MustNewConstMetric(
+		c.DownloadsError,
+		prometheus.GaugeValue,
+		float64(failedDownloads),
+	)
 
 	return nil, nil
 }
 
-func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string, ch chan<- prometheus.Metric) error {
+func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string, ch chan<- prometheus.Metric) (bool, error) {
 	labels, err := c.gatherDownloadDetailLabels(a)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// collect metrics starting without hash or name (starting at index 2 and beyond), cannot put this directly in range because it creates
@@ -329,12 +363,14 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 	abbrA := a[2:]
 	abbrCommands := cmds[2:]
 
+	errorMessage := false
+
 	for idx, v := range abbrA {
 		switch abbrCommands[idx] {
 		case "d.down.rate=":
 			down, ok := v.(int64)
 			if !ok {
-				return fmt.Errorf("failed to convert Download Rate Bytes")
+				return errorMessage, fmt.Errorf("failed to convert Download Rate Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.DownloadRateBytes,
@@ -345,7 +381,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case "d.down.total=":
 			downTotal, ok := v.(int64)
 			if !ok {
-				return fmt.Errorf("failed to convert Download Total Bytes")
+				return errorMessage, fmt.Errorf("failed to convert Download Total Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.DownloadTotalBytes,
@@ -356,7 +392,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case "d.up.rate=":
 			up, ok := v.(int64)
 			if !ok {
-				return fmt.Errorf("failed to convert Upload Rate Bytes")
+				return errorMessage, fmt.Errorf("failed to convert Upload Rate Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.UploadRateBytes,
@@ -367,7 +403,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case "d.up.total=":
 			upTotal, ok := v.(int64)
 			if !ok {
-				return fmt.Errorf("failed to convert Upload Total Bytes")
+				return errorMessage, fmt.Errorf("failed to convert Upload Total Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.UploadTotalBytes,
@@ -375,9 +411,41 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 				float64(upTotal),
 				labels...,
 			)
+		case "d.message=":
+			// If there are no messages, then just continue
+			if v == nil {
+				continue
+			}
+
+			msg, ok := v.(string)
+			if !ok {
+				return errorMessage, fmt.Errorf("failed to convert Download Message")
+			}
+
+			// Excluding message Tried all trackers taken from rutorrent code base as a general exclusion for a tracker message that doesn't
+			// really mean that there is an error.
+			if msg == "" || msg == "Tracker: [Tried all trackers.]" {
+				continue
+			}
+
+			// Unfortunately, rtorrent doesn't actually give us a good way of tracking errors, so we have to assume that if there is a
+			// tracker message then it has an error
+			errorMessage = true
+
+			// Only emit the actual message as a metric if the user has instructed us to do so
+			if c.collectOpts.DownloadMessages {
+				msgLabels := append(labels, msg)
+				ch <- prometheus.MustNewConstMetric(
+					c.DownloadMessages,
+					prometheus.GaugeValue,
+					1,
+					msgLabels...,
+				)
+			}
 		}
 	}
-	return nil
+
+	return errorMessage, nil
 }
 
 func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]string, error) {

@@ -14,6 +14,8 @@ Specific additions made by this fork:
 * Support self-signed (non-official) certificates
 * Allow setting timeouts on all HTTP / XMLRPC calls
 * Allow disabling high-cardinality metrics (`-rtorrent.downloads.collect.details`)
+* Reports torrents with errors via `rtorrent_downloads_error` gauge
+* Reports tracker messages via `rtorrent_downloads_messages` (can be disabled by setting `-rtorrent.downloads.collect.messages` to `false`
 * Improve performance for greater numbers of torrents (especially helpful if you have >100 torrents)
 
 Command `rtorrent-exporter` provides a Prometheus exporter for rTorrent.
@@ -28,18 +30,20 @@ Usage
 Available flags for `rtorrent-exporter` include:
 
 ```sh
-% ./rtorrent-exporter --help
-Usage of ./rtorrent-exporter:
+% ./rtorrent_exporter --help
+Usage of ./rtorrent_exporter:
   -rtorrent.addr string
         address of rTorrent XML-RPC server
   -rtorrent.downloads.collect.details
-        [optional] collect rate and total bytes for each torrent (greatly increases metric cardinality) (defaults: true) (default true)
+        [optional] collect rate and total bytes for each torrent (greatly increases metric cardinality) (default true)
+  -rtorrent.downloads.collect.messages
+        [optional] collect messages for each torrent (greatly increases metric cardinality) (default true)
   -rtorrent.insecure
         [optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)
   -rtorrent.password string
         [optional] password used for HTTP Basic authentication with rTorrent XML-RPC server
   -rtorrent.timeout duration
-        [optional] duration of how long to wait before timing out rtorrent request (defaults: 10s) (default 10s)
+        [optional] duration of how long to wait before timing out rtorrent request (default 10s)
   -rtorrent.username string
         [optional] username used for HTTP Basic authentication with rTorrent XML-RPC server
   -telemetry.addr string
@@ -47,7 +51,7 @@ Usage of ./rtorrent-exporter:
   -telemetry.path string
         URL path for surfacing collected metrics (default "/metrics")
   -telemetry.timeout duration
-        [optional] duration of how long to wait to receive http headers on telemetry addr (defaults: 10s) (default 10s)
+        [optional] duration of how long to wait to receive http headers on telemetry addr (default 10s)
 ```
 
 An example of using `rtorrent-exporter`:

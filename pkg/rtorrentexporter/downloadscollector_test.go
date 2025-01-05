@@ -126,9 +126,9 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 
 func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 	ds := new(MockDownloadsSource)
-	cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+	cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total=", "d.message="}
 	ds.On("DownloadWithDetails", cmds).Return([][]any{
-		{"hash1", "name1", int64(100), int64(200), int64(300), int64(400)},
+		{"hash1", "name1", int64(100), int64(200), int64(300), int64(400), nil},
 	}, nil)
 
 	collector := NewDownloadsCollector(ds, CollectorOpts{DownloadDetails: true})
@@ -154,8 +154,9 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 
 	go func() {
 		defer close(ch)
-		err := collector.parseDownloadDetailsMetrics(a, cmds, ch)
+		hasMessage, err := collector.parseDownloadDetailsMetrics(a, cmds, ch)
 		assert.Nil(t, err)
+		assert.False(t, hasMessage)
 	}()
 
 	for range ch {

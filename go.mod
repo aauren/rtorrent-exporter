@@ -10,6 +10,8 @@ require (
 	github.com/stretchr/testify v1.10.0
 )
 
+require github.com/go-logr/logr v1.4.1 // indirect
+
 require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.3.0 // indirect
@@ -26,4 +28,5 @@ require (
 	golang.org/x/sys v0.28.0 // indirect
 	google.golang.org/protobuf v1.36.1 // indirect
 	gopkg.in/yaml.v3 v3.0.1 // indirect
+	k8s.io/klog/v2 v2.130.1
 )

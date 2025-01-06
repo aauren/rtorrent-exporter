@@ -2,10 +2,10 @@ package rtorrentexporter
 
 import (
 	"fmt"
-	"log"
 
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/prometheus/client_golang/prometheus"
+	klog "k8s.io/klog/v2"
 )
 
 var _ DownloadsSource = &rtorrent.DownloadService{}
@@ -503,7 +503,7 @@ func (c *DownloadsCollector) Describe(ch chan<- *prometheus.Desc) {
 // downloads to the provided prometheus Metric channel.
 func (c *DownloadsCollector) Collect(ch chan<- prometheus.Metric) {
 	if desc, err := c.collect(ch); err != nil {
-		log.Printf("[ERROR] failed collecting download metric %v: %v", desc, err)
+		klog.Errorf("[ERROR] failed collecting download metric %v: %v", desc, err)
 		ch <- prometheus.NewInvalidMetric(desc, err)
 		return
 	}

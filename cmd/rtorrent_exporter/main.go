@@ -6,7 +6,6 @@ package main
 import (
 	"crypto/tls"
 	"flag"
-	"log"
 	"net"
 	"net/http"
 	"time"
@@ -15,6 +14,7 @@ import (
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
+	klog "k8s.io/klog/v2"
 )
 
 var (
@@ -39,6 +39,7 @@ var (
 )
 
 func main() {
+	klog.InitFlags(nil)
 	flag.Parse()
 
 	validateFlags()
@@ -73,7 +74,7 @@ func main() {
 
 	c, err := rtorrent.New(*rtorrentAddr, rt)
 	if err != nil {
-		log.Fatalf("cannot create rTorrent client: %v", err)
+		klog.Fatalf("cannot create rTorrent client: %v", err)
 	}
 
 	colOpts := rtorrentexporter.CollectorOpts{
@@ -88,7 +89,7 @@ func main() {
 		http.Redirect(w, r, *metricsPath, http.StatusMovedPermanently)
 	})
 
-	log.Printf("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
+	klog.Infof("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
 		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v)",
 		*telemetryAddr, *rtorrentAddr, *telemetryTimeout,
 		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentDownloadsCollectDetails,
@@ -100,19 +101,19 @@ func main() {
 		ReadHeaderTimeout: *telemetryTimeout,
 	}
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("cannot start rTorrent exporter: %s", err)
+		klog.Fatalf("cannot start rTorrent exporter: %s", err)
 	}
 }
 
 func validateFlags() {
 	if *rtorrentAddr == "" {
-		log.Fatal("address of rTorrent XML-RPC server must be specified with '-rtorrent.addr' flag")
+		klog.Fatal("address of rTorrent XML-RPC server must be specified with '-rtorrent.addr' flag")
 	}
 	if *rtorrentTimeout <= 0 {
-		log.Fatal("timeout for rTorrent request must be greater than 0")
+		klog.Fatal("timeout for rTorrent request must be greater than 0")
 	}
 	if *telemetryTimeout <= 0 {
-		log.Fatal("timeout for telemetry request must be greater than 0")
+		klog.Fatal("timeout for telemetry request must be greater than 0")
 	}
 }
 

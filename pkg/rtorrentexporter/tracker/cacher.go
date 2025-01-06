@@ -167,6 +167,21 @@ func (c *Cacher) cacheTrackerError(t *rtorrent.Tracker, err error) {
 	delete(c.trackerCache, *t.TrackerIndex())
 }
 
+func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup) {
+	defer wg.Done()
+	c.cacheMu.RLock()
+	defer c.cacheMu.Unlock()
+
+	for ti, tr := range c.trackerCache {
+		if ctx.Done() != nil {
+			return
+		}
+		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+			c.GetTrackerFromCacheNonBlocking(&ti)
+		}
+	}
+}
+
 func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
@@ -181,6 +196,9 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 		childWG.Add(1)
 		go f.Run(ctx, childWG, c.reqChan, c.resChan)
 	}
+
+	// Setup a timer to check cached items for staleness proactively
+	cacheCheckTicker := time.NewTicker(c.cOpts.MinAge)
 
 	// Setup cacher loop
 	for {
@@ -199,6 +217,10 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 				c.cacheTrackerError(resp.Tracker, resp.Error)
 			}
 			c.cacheTracker(resp)
+		// If our ticker ticks, check cache for stale items proactively
+		case <-cacheCheckTicker.C:
+			childWG.Add(1)
+			go c.checkCacheForStaleItems(ctx, childWG)
 		}
 	}
 }

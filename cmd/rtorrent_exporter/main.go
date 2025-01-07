@@ -1,19 +1,21 @@
-//nolint:depguard // we haven't configured depguard for this project
 package main
 
 // Command rtorrent-exporter provides a Prometheus exporter for rTorrent.
 
 import (
-	"crypto/tls"
+	"context"
 	"flag"
-	"net"
-	"net/http"
+	"os"
+	"os/signal"
+	"sync"
+	"syscall"
 	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter"
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/http"
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/prometheus/client_golang/prometheus"
-	"github.com/prometheus/client_golang/prometheus/promhttp"
 	klog "k8s.io/klog/v2"
 )
 
@@ -36,73 +38,103 @@ var (
 		"[optional] collect rate and total bytes for each torrent (greatly increases metric cardinality)")
 	rtorrentDownloadsCollectMessages = flag.Bool("rtorrent.downloads.collect.messages", true,
 		"[optional] collect messages for each torrent (greatly increases metric cardinality)")
+	rtorrentTrackersEnabled = flag.Bool("rtorrent.trackers.enabled", true,
+		"[optional] enable tracking of tracker information (increases metric cardinality and load on rTorrent server)")
+	rtorrentTrackersCacheMinAge = flag.Duration("rtorrent.trackers.cache.min-age", 10*time.Minute,
+		"[optional] minimum age of a cached tracker before it is considered for refresh")
+	rtorrentTrackersCacheMaxAge = flag.Duration("rtorrent.trackers.cache.max-age", 1*time.Hour,
+		"[optional] maximum age of a cached tracker before it is considered stale")
+	rtorrentTrackersCacheMaxParallelRequests = flag.Int("rtorrent.trackers.cache.max-parallel-requests", 5,
+		"[optional] maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker information")
 )
 
 func main() {
+	// Init all flags / parameters to the application and parse them
 	klog.InitFlags(nil)
 	flag.Parse()
 
+	// Validate arguments passed
 	validateFlags()
 
-	// Optionally enable HTTP Basic authentication
-	var rt http.RoundTripper
-	authEnabled := false
-	if u, p := *rtorrentUsername, *rtorrentPassword; u != "" && p != "" {
-		rt = &authRoundTripper{
-			Username: u,
-			Password: p,
-			Transport: &http.Transport{
-				Dial: dialTimeout,
-				TLSClientConfig: &tls.Config{
-					//nolint:gosec // we don't care that this may be true, that's the point
-					InsecureSkipVerify: *rtorrentInsecure,
-				},
-			},
-		}
-		authEnabled = true
-	} else {
-		rt = &authRoundTripper{
-			Transport: &http.Transport{
-				Dial: dialTimeout,
-				TLSClientConfig: &tls.Config{
-					//nolint:gosec // we don't care that this may be true, that's the point
-					InsecureSkipVerify: *rtorrentInsecure,
-				},
-			},
-		}
-	}
+	// Setup context and wait group for graceful shutdown
+	primaryCtx, masterCancel := context.WithCancel(context.Background())
+	primaryWG := &sync.WaitGroup{}
 
-	c, err := rtorrent.New(*rtorrentAddr, rt)
+	// Setup HTTP Client for rtorrent XMLRPC interaction over HTTP
+	hcOpts := &http.ClientOpts{
+		DialTimeout: *rtorrentTimeout,
+		Insecure:    *rtorrentInsecure,
+		Password:    *rtorrentPassword,
+		Username:    *rtorrentUsername,
+	}
+	rt := http.NewRoundTripper(*hcOpts)
+
+	// Setup rtorrent client
+	c, err := rtorrent.New(*rtorrentAddr, *rt)
 	if err != nil {
 		klog.Fatalf("cannot create rTorrent client: %v", err)
 	}
 
-	colOpts := rtorrentexporter.CollectorOpts{
-		DownloadDetails:  *rtorrentDownloadsCollectDetails,
-		DownloadMessages: *rtorrentDownloadsCollectMessages,
+	// If tracker collection is enabled, then setup the tracker cacher and run it
+	var cacher *tracker.Cacher
+	if *rtorrentTrackersEnabled {
+		ts := &rtorrent.TrackerService{C: c}
+		cacher = tracker.NewCacher(ts, tracker.CacheOpts{
+			MaxAge:              *rtorrentTrackersCacheMaxAge,
+			MinAge:              *rtorrentTrackersCacheMinAge,
+			MaxParallelRequests: *rtorrentTrackersCacheMaxParallelRequests,
+		})
+
+		primaryWG.Add(1)
+		go cacher.Run(primaryCtx, primaryWG)
 	}
 
-	prometheus.MustRegister(rtorrentexporter.New(c, colOpts))
+	// Setup HTTP server for metrics and run it
+	mhOpts := http.MetricHandlerOpts{
+		MetricsPath:    *metricsPath,
+		MetricsAddr:    *telemetryAddr,
+		MetricsTimeout: *telemetryTimeout,
+	}
+	mh := http.NewMetricHandler(mhOpts)
+	primaryWG.Add(1)
+	go mh.Run(primaryCtx, primaryWG)
 
-	http.Handle(*metricsPath, promhttp.Handler())
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, *metricsPath, http.StatusMovedPermanently)
-	})
+	// Setup download collector & pre-warm any caches that may exist
+	colOpts := rtorrentexporter.CollectorOpts{
+		DownloadDetails:    *rtorrentDownloadsCollectDetails,
+		DownloadMessages:   *rtorrentDownloadsCollectMessages,
+		CollectTrackerInfo: *rtorrentTrackersEnabled,
+		TC:                 cacher,
+	}
+	rte := rtorrentexporter.New(c, colOpts)
+	err = rte.PreWarmCaches()
+	if err != nil {
+		klog.Fatalf("failed to pre-warm caches successfully: %v", err)
+	}
+	prometheus.MustRegister(rte)
 
+	// Output information about the exporter's configuration
+	authEnabled := rtorrentPassword != nil && rtorrentUsername != nil && *rtorrentUsername != "" && *rtorrentPassword != ""
 	klog.Infof("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
-		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v)",
+		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v)"+
+		"(collect tracker info: %v) (tracker cache min age: %v) (tracker cache max age: %v) (tracker cache max parallel requests: %v)",
 		*telemetryAddr, *rtorrentAddr, *telemetryTimeout,
 		authEnabled, *rtorrentInsecure, *rtorrentTimeout, *rtorrentDownloadsCollectDetails,
-		*rtorrentDownloadsCollectMessages,
+		*rtorrentDownloadsCollectMessages, *rtorrentTrackersEnabled, *rtorrentTrackersCacheMinAge,
+		*rtorrentTrackersCacheMaxAge, *rtorrentTrackersCacheMaxParallelRequests,
 	)
 
-	server := &http.Server{
-		Addr:              *telemetryAddr,
-		ReadHeaderTimeout: *telemetryTimeout,
-	}
-	if err := server.ListenAndServe(); err != nil {
-		klog.Fatalf("cannot start rTorrent exporter: %s", err)
-	}
+	// Handle SIGINT and SIGTERM
+	ch := make(chan os.Signal, 1)
+	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
+
+	// Wait for SIGINT or SIGTERM
+	<-ch
+	klog.Info("shutting down rTorrent exporter")
+	masterCancel()
+	primaryWG.Wait()
+
+	klog.Info("rTorrent exporter shutdown successfully")
 }
 
 func validateFlags() {
@@ -115,23 +147,22 @@ func validateFlags() {
 	if *telemetryTimeout <= 0 {
 		klog.Fatal("timeout for telemetry request must be greater than 0")
 	}
-}
 
-var _ http.RoundTripper = &authRoundTripper{}
-
-// An authRoundTripper is a http.RoundTripper which adds HTTP Basic authentication
-// to each HTTP request.
-type authRoundTripper struct {
-	Username  string
-	Password  string
-	Transport *http.Transport
-}
-
-func dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, *rtorrentTimeout)
-}
-
-func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.SetBasicAuth(rt.Username, rt.Password)
-	return rt.Transport.RoundTrip(r)
+	// Validate tracker settings
+	if *rtorrentTrackersEnabled && !*rtorrentDownloadsCollectDetails {
+		klog.Fatal("collecting tracker information requires collecting download details, please either disable rtorrent.trackers.enabled " +
+			"or enable rtorrent.downloads.collect.details")
+	}
+	if *rtorrentTrackersEnabled {
+		if *rtorrentTrackersCacheMinAge <= 0 {
+			klog.Fatal("minimum age of a cached tracker must be greater than 0")
+		}
+		if *rtorrentTrackersCacheMaxAge <= 0 {
+			klog.Fatal("maximum age of a cached tracker must be greater than 0")
+		}
+		if *rtorrentTrackersCacheMaxParallelRequests <= 0 {
+			klog.Fatal("maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker information " +
+				"must be greater than 0")
+		}
+	}
 }

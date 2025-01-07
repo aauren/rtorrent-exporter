@@ -38,6 +38,7 @@ linters-settings:
         allow:
           - "$gostd"
           - github.com/aauren/rtorrent/rtorrent
+          - github.com/aauren/rtorrent-exporter
           - github.com/prometheus
           - k8s.io/klog
 issues:

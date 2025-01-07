@@ -14,6 +14,13 @@ const (
 	namespace = "rtorrent"
 )
 
+// CollectorOpts contains options for creating prometheus collectors that may need be attached to caches that can be pre-warmed.
+type CachingCollector interface {
+	prometheus.Collector
+	// PreWarmCache pre-warms the cache for the collector. If a collector does not have a cache to pre-warm it is expected to be a no-op.
+	PreWarmCache() error
+}
+
 // An Exporter is a Prometheus exporter for rTorrent metrics.
 // It wraps all rTorrent metrics collectors and provides a single global
 // exporter which can serve metrics. It also ensures that the collection
@@ -22,7 +29,7 @@ const (
 // register with Prometheus.
 type Exporter struct {
 	mu         sync.Mutex
-	collectors []prometheus.Collector
+	collectors []CachingCollector
 }
 
 // Verify that the Exporter implements the prometheus.Collector interface.
@@ -31,7 +38,7 @@ var _ prometheus.Collector = &Exporter{}
 // New creates a new Exporter which collects metrics from one or mote sites.
 func New(c *rtorrent.Client, collectOpts CollectorOpts) *Exporter {
 	return &Exporter{
-		collectors: []prometheus.Collector{
+		collectors: []CachingCollector{
 			NewDownloadsCollector(c.Downloads, collectOpts),
 		},
 	}
@@ -55,4 +62,14 @@ func (c *Exporter) Collect(ch chan<- prometheus.Metric) {
 	for _, cc := range c.collectors {
 		cc.Collect(ch)
 	}
+}
+
+// PreWarmCaches pre-warms caches for all collectors that have them.
+func (c *Exporter) PreWarmCaches() error {
+	for _, c := range c.collectors {
+		if err := c.PreWarmCache(); err != nil {
+			return err
+		}
+	}
+	return nil
 }

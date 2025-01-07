@@ -1,8 +1,11 @@
 package rtorrentexporter
 
 import (
+	"context"
 	"fmt"
+	"time"
 
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/prometheus/client_golang/prometheus"
 	klog "k8s.io/klog/v2"
@@ -34,6 +37,7 @@ type DownloadsSource interface {
 // A DownloadsCollector is a Prometheus collector for metrics regarding rTorrent
 // downloads.
 type DownloadsCollector struct {
+	// Downloads metrics, these are mostly counts of the various states of downloads
 	Downloads           *prometheus.Desc
 	DownloadsStarted    *prometheus.Desc
 	DownloadsStopped    *prometheus.Desc
@@ -43,27 +47,38 @@ type DownloadsCollector struct {
 	DownloadsSeeding    *prometheus.Desc
 	DownloadsLeeching   *prometheus.Desc
 	DownloadsActive     *prometheus.Desc
-	DownloadsError      *prometheus.Desc
+	// This one requres download details to be collected, but is otherwise also a simple count
+	DownloadsError *prometheus.Desc
 
+	// Download details metrics, these are the actual download rates and totals
 	DownloadRateBytes  *prometheus.Desc
 	DownloadTotalBytes *prometheus.Desc
 	UploadRateBytes    *prometheus.Desc
 	UploadTotalBytes   *prometheus.Desc
 
+	// Download messages, these are the messages that come from the tracker
 	DownloadMessages *prometheus.Desc
 
+	// DownloadsSource is the source from which we get the downloads, this is typically provided by a facade or the rtorrent library
 	ds DownloadsSource
 
+	// CollectorOpts are the options that the collector was created with
 	collectOpts *CollectorOpts
 }
 
 type CollectorOpts struct {
-	DownloadDetails  bool
-	DownloadMessages bool
-	CollectURLs      bool
+	DownloadDetails    bool
+	DownloadMessages   bool
+	CollectTrackerInfo bool
+	TC                 *tracker.Cacher
 }
 
+const (
+	maxTrackerWaitTime = 5 * time.Second
+)
+
 var (
+	hashOnlyCommand       = []string{"d.hash="}
 	defaultActiveCommands = []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total=",
 		"d.message="}
 )
@@ -74,13 +89,12 @@ var _ prometheus.Collector = &DownloadsCollector{}
 // NewDownloadsCollector creates a new DownloadsCollector which collects metrics
 // regarding rTorrent downloads.
 func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *DownloadsCollector {
-	const (
-		subsystem = "downloads"
-	)
+	const subsystem = "downloads"
 
-	var (
-		labels = []string{"info_hash", "name"}
-	)
+	labels := []string{"info_hash", "name"}
+	if collectorOpts.CollectTrackerInfo {
+		labels = append(labels, "tracker")
+	}
 
 	downCollector := &DownloadsCollector{
 		Downloads: prometheus.NewDesc(
@@ -181,6 +195,8 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 			nil,
 		)
 
+		// As errors are reflected by evaluating the details that come from downloads, we're only able to get them if we're collecting,
+		// but otherwise this metric is a lot more similar to the view based ones above.
 		downCollector.DownloadsError = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "error"),
 			"Number of downloads with tracker errors.",
@@ -218,8 +234,7 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 	return nil, nil
 }
 
-// collectDownloadCounts collects metrics which track number of downloads in
-// various possible states.
+// collectDownloadCounts collects metrics which track number of downloads in various possible states.
 func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
 	started, err := c.ds.Started()
 	if err != nil {
@@ -312,8 +327,7 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 	return nil, nil
 }
 
-// collectDownloadDetails collects information about active downloads,
-// which are uploading and/or downloading data.
+// collectDownloadDetails collects information about active downloads, which are uploading and/or downloading data.
 func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
 	cmds := c.getDownloadDetailCommands()
 
@@ -352,6 +366,7 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 	return nil, nil
 }
 
+// parseDownloadDetailsMetrics parses the metrics for a single download and sends them to the provided channel.
 func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string, ch chan<- prometheus.Metric) (bool, error) {
 	labels, err := c.gatherDownloadDetailLabels(a)
 	if err != nil {
@@ -448,6 +463,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 	return errorMessage, nil
 }
 
+// gatherDownloadDetailLabels gathers the labels for a single download.
 func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]string, error) {
 	hash, ok := torSlice[0].(string)
 	if !ok {
@@ -457,17 +473,67 @@ func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]strin
 	if !ok {
 		return nil, fmt.Errorf("failed to convert torrent name to string")
 	}
-
 	labels := []string{
 		hash,
 		name,
 	}
 
+	// Add the tracker URL to the labels if it is available, otherwise add "unknown" and continue despite errors
+	if c.collectOpts.CollectTrackerInfo {
+		url, err := c.getURLLabel(hash)
+		if err != nil {
+			// We make this error silent as we don't want to make this a failing error
+			klog.Errorf("failed to get tracker URL: %v", err)
+			labels = append(labels, "unknown")
+		} else {
+			labels = append(labels, url)
+		}
+	}
+
 	return labels, nil
 }
 
+// getURLLabel gets the URL label for a given hash.
+func (c *DownloadsCollector) getURLLabel(hash string) (string, error) {
+	ctx, cancelFn := context.WithTimeout(context.Background(), maxTrackerWaitTime)
+	defer cancelFn()
+	t, err := c.collectOpts.TC.GetTrackerFromCacheBlocking(ctx, rtorrent.NewTrackerNoIndex(hash))
+	if err != nil {
+		return "", fmt.Errorf("failed to get tracker from cache: %v", err)
+	}
+	url, err := tracker.GetSingleTrackerURL(t)
+	if err != nil {
+		return "", fmt.Errorf("failed to get tracker URL: %v", err)
+	}
+
+	return url, nil
+}
+
+// getDownloadDetailCommands returns the commands to be used for gathering download details.
 func (c *DownloadsCollector) getDownloadDetailCommands() []string {
 	return defaultActiveCommands
+}
+
+// PreWarmCache pre-warms the tracker cache using the hashes of the current downloads.
+func (c *DownloadsCollector) PreWarmCache() error {
+	// Find all of the hashes for the current downloads
+	allDownHashes, err := c.ds.DownloadWithDetails(hashOnlyCommand)
+	if err != nil {
+		return fmt.Errorf("encountered error getting download hashes: %v", err)
+	}
+
+	for _, hash := range allDownHashes {
+		// Attempt to get the hash out of the slice
+		h, ok := hash[0].(string)
+		if !ok {
+			return fmt.Errorf("failed to convert hash to string")
+		}
+
+		// Send cache request
+		c.collectOpts.TC.GetTrackerFromCacheNonBlocking(rtorrent.NewTrackerNoIndex(h))
+	}
+
+	return nil
 }
 
 // Describe sends the descriptors of each metric over to the provided channel.

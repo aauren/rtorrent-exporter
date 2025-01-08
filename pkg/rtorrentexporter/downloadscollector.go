@@ -1,9 +1,7 @@
 package rtorrentexporter
 
 import (
-	"context"
 	"fmt"
-	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
 	"github.com/aauren/rtorrent/rtorrent"
@@ -72,10 +70,6 @@ type CollectorOpts struct {
 	CollectTrackerInfo bool
 	TC                 *tracker.Cacher
 }
-
-const (
-	maxTrackerWaitTime = 5 * time.Second
-)
 
 var (
 	hashOnlyCommand       = []string{"d.hash="}
@@ -495,18 +489,20 @@ func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]strin
 
 // getURLLabel gets the URL label for a given hash.
 func (c *DownloadsCollector) getURLLabel(hash string) (string, error) {
-	ctx, cancelFn := context.WithTimeout(context.Background(), maxTrackerWaitTime)
-	defer cancelFn()
-	t, err := c.collectOpts.TC.GetTrackerFromCacheBlocking(ctx, rtorrent.NewTrackerNoIndex(hash))
-	if err != nil {
-		return "", fmt.Errorf("failed to get tracker from cache: %v", err)
+	t := c.collectOpts.TC.GetTrackerFromCacheNonBlocking(rtorrent.NewTrackerNoIndex(hash))
+	if t == nil {
+		return "", nil
 	}
-	url, err := tracker.GetSingleTrackerURL(t)
+	url, err := t.URL()
+	if err != nil {
+		return "", fmt.Errorf("failed to get tracker URL: %v", err)
+	}
+	urlDomainOnly, err := tracker.GetDomainForTrackerURL(url)
 	if err != nil {
 		return "", fmt.Errorf("failed to get tracker URL: %v", err)
 	}
 
-	return url, nil
+	return urlDomainOnly, nil
 }
 
 // getDownloadDetailCommands returns the commands to be used for gathering download details.
@@ -516,6 +512,11 @@ func (c *DownloadsCollector) getDownloadDetailCommands() []string {
 
 // PreWarmCache pre-warms the tracker cache using the hashes of the current downloads.
 func (c *DownloadsCollector) PreWarmCache() error {
+	// If we're not configured for collecting tracker information, then turn this warming step into a noop
+	if !c.collectOpts.CollectTrackerInfo {
+		return nil
+	}
+
 	// Find all of the hashes for the current downloads
 	allDownHashes, err := c.ds.DownloadWithDetails(hashOnlyCommand)
 	if err != nil {

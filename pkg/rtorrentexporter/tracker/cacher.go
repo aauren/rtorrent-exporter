@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
+	"sort"
 	"sync"
 	"time"
 
@@ -12,7 +14,18 @@ import (
 )
 
 const (
+	// The internal max poll interval is the maximum amount of time that we will wait between checking the cache for new items on blocking
+	// fetch requests.
 	internalMaxPollInterval = 50 * time.Millisecond
+	// internalCacheCheckInterval is the interval at which we will check the cache check channel for new requests.
+	internalCacheCheckInterval = 1 * time.Second
+	// Maximum number of requests that will be cached. This prevents a non-blocking requestor from being blocked until an available fetcher
+	// receives the request. All requests sent on this channel will be cache checked before sending to a fetcher, to ensure that the
+	// fetcher's are not overwhelmed by duplicate requests.
+	maxCacheCheckChanBuffer = 100000
+	// The parallelRequestsBufferMultiplier is multiplied by the max parallel requests given by the user at runtime to determine the size of
+	// the request channel buffer. This is to ensure that we can handle a burst of requests without blocking the fetchers.
+	parallelRequestsBufferMultiplier = 3
 )
 
 // Cacher is a construct that caches the results of a Tracker Fetcher for a specified min / max time and according to a set number of
@@ -23,11 +36,12 @@ type Cacher struct {
 	cOpts CacheOpts
 
 	// Needed for running fetch requesters
-	reqChan chan *FetchRequest
-	resChan chan *TrackerResponse
+	reqChan        chan *FetchRequest
+	cacheCheckChan chan *FetchRequest
+	resChan        chan *TrackerResponse
 
 	// Needed for caching
-	trackerCache      map[rtorrent.TrackerIndex]*TrackerResponse
+	trackerCache      map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance
 	trackerRespErrors map[rtorrent.TrackerIndex]error
 	cacheMu           sync.RWMutex
 	blockingReqCtx    context.Context
@@ -44,14 +58,49 @@ type CacheOpts struct {
 	MaxParallelRequests int
 }
 
+// TimedTrackerCacheInstance is a struct that holds a single tracker and the time that it was fetched. This is what is stored in the
+// internal trackerCache. This is distinct from the TrackerResponse as it only holds a single tracker and the time that it was fetched and
+// does not hold any errors that may have been encountered during the tracker request.
+type TimedTrackerCacheInstance struct {
+	// Tracker is a single tracker that was fetched.
+	Tracker *rtorrent.Tracker
+	// FetchedAt is the time that the tracker was fetched.
+	FetchedAt time.Time
+}
+
+func (ttci *TimedTrackerCacheInstance) String() string {
+	return fmt.Sprintf("TimedTrackerCacheInstance: fetched at: <%s>, Value: <%s>", ttci.FetchedAt, ttci.Tracker)
+}
+
+func (ttci *TimedTrackerCacheInstance) IsStale(minAge time.Duration, maxAge time.Duration) bool {
+	if time.Since(ttci.FetchedAt) < minAge {
+		return false
+	}
+	if time.Since(ttci.FetchedAt) > maxAge {
+		return true
+	}
+
+	// Generate a random duration between minAge and maxAge
+	//nolint:gosec // we don't care that we are using an insecure random number generator for this purpose
+	randomDuration := minAge + time.Duration(rand.Int63n(int64(maxAge-minAge)))
+
+	// Compare tr.FetchedAt against the current time minus the random duration
+	return time.Since(ttci.FetchedAt) > randomDuration
+}
+
 // NewCacher creates a new Cacher with the specified Fetcher and CacheOpts.
 func NewCacher(f Source, opts CacheOpts) *Cacher {
-	return &Cacher{f: f, cOpts: opts}
+	return &Cacher{
+		f:                 f,
+		cOpts:             opts,
+		trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+		trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+	}
 }
 
 // getTrackerFromCacheOnly retrieves a tracker from the cache without sending a fetch request if the item doesn't exist, this is meant to be
 // an internal method only.
-func (c *Cacher) getTrackerFromCacheOnly(ti *rtorrent.TrackerIndex) (*TrackerResponse, bool, error) {
+func (c *Cacher) getTrackerFromCacheOnly(ti *rtorrent.TrackerIndex) (*TimedTrackerCacheInstance, bool, error) {
 	c.cacheMu.RLock()
 	defer c.cacheMu.RUnlock()
 
@@ -71,24 +120,29 @@ func (c *Cacher) getTrackerFromCacheOnly(ti *rtorrent.TrackerIndex) (*TrackerRes
 // GetTrackerFromCacheNonBlocking retrieves a tracker from the cache, if it doesn't exist, it will send a fetch request and return nil. In
 // the case of stale cached data, it will return stale data and send a fetch request.
 func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *rtorrent.Tracker {
-	tr, ok, _ := c.getTrackerFromCacheOnly(ti)
+	klog.V(2).Infof("got non-blocking tracker request for: %v", ti)
+	ttci, ok, _ := c.getTrackerFromCacheOnly(ti)
 	if !ok {
+		klog.V(1).Infof("tracker was not found in cache, sending request to cache check channel: %v", ti)
 		fr := &FetchRequest{TrackerIndex: ti}
-		c.reqChan <- fr
+		c.cacheCheckChan <- fr
 		return nil
 	}
 
-	if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+	if ttci.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+		klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)
 		fr := &FetchRequest{TrackerIndex: ti}
 		c.reqChan <- fr
 	}
 
-	return tr.Tracker
+	klog.V(2).Infof("tracker was found in cache, returning existing entry: %v", ti)
+	return ttci.Tracker
 }
 
 // GetTrackerFromCacheBlocking retrieves a tracker from the cache, if it doesn't exist, it will send a fetch request and block until the
 // tracker is available, and then return the tracker. In the case of stale cached data, it will return stale data and send a fetch request
 func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.TrackerIndex) (*rtorrent.Tracker, error) {
+	klog.V(2).Infof("got blocking tracker request for: %v", ti)
 	// This should help protect us from nil tracker problems later on
 	if ti == nil {
 		return nil, fmt.Errorf("tracker index cannot be nil")
@@ -101,7 +155,9 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 		return tr, nil
 	}
 
-	// As of this moment take the pointer to the blocking request context, this will be used to cancel the blocking request if needed
+	klog.V(1).Infof("tracker was not found in cache, blocking until tracker is available: %v", ti)
+	// As of this moment take the pointer to the blocking request context, this will be used to cancel the blocking request in case of
+	// emergency, if needed.
 	blockingCancelCtx := c.blockingReqCtx
 
 	// If we're unable to get a non-blocking version of the tracker from the cache, then we need to block until we get a response added to
@@ -110,39 +166,95 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 	for {
 		select {
 		case <-ticker.C:
+			klog.V(2).Infof("checking cache for tracker: %v", ti)
 			tr, ok, err := c.getTrackerFromCacheOnly(ti)
 			if ok {
+				klog.V(1).Infof("blocking tracker request was found in cache, returning existing entry: %v", ti)
 				ticker.Stop()
 				return tr.Tracker, nil
 			}
 			if err != nil {
+				klog.V(1).Infof("blocking tracker request was found in cache, but with an error, returning error: %v", err)
 				ticker.Stop()
 				return nil, err
 			}
 		case <-ctx.Done():
+			klog.Infof("blocking request context has been cancelled, or timedout: %v", ti)
 			ticker.Stop()
 			return nil, ctx.Err()
 		case <-blockingCancelCtx.Done():
+			klog.Infof("all blocking requests have been cancelled for an unknown reason, cancelling request: %v", ti)
 			ticker.Stop()
 			return nil, fmt.Errorf("blocking request was cancelled for an unknown error, try request again")
 		}
 	}
 }
 
-func (c *Cacher) cacheTracker(tr *TrackerResponse) {
+// cacheTracker caches a tracker response and clears any error responses now that we have a successful response, this is meant to be an
+// internal method only.
+func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	// Add the current result into the tracker cache, overriding any existing result that may be there
-	c.trackerCache[*tr.Tracker.TrackerIndex()] = tr
+	// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained
+	// a hash now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed
+	// version that was originally looked up.
+	if len(tr.Trackers) > 1 {
+		ti := rtorrent.NewTrackerNoIndex(tr.Trackers[0].TrackerIndex().InfoHash)
+		tr.Trackers = append(tr.Trackers, tr.Trackers[0].CloneWithTrackerIndex(ti))
+	}
 
-	// Purge any errors that may have been obtained for this tracker in the past
-	delete(c.trackerRespErrors, *tr.Tracker.TrackerIndex())
+	for _, t := range tr.Trackers {
+		// Create a new TimedTrackerCacheInstance
+		ttci := &TimedTrackerCacheInstance{
+			Tracker:   t,
+			FetchedAt: tr.FetchedAt,
+		}
+
+		// Add the current result into the tracker cache, overriding any existing result that may be there
+		c.trackerCache[*t.TrackerIndex()] = ttci
+
+		// Purge any errors that may have been obtained for this tracker in the past
+		delete(c.trackerRespErrors, *t.TrackerIndex())
+	}
 }
 
-// cacheTrackerError caches an error for a tracker, this is meant to be an internal method only. We have to be careful as the Tracker may be
-// nil for certain error cases.
-func (c *Cacher) cacheTrackerError(t *rtorrent.Tracker, err error) {
+// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained a hash
+// now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed version that
+// was originally looked up.
+func trackerSliceEnsuringTrackerWithHashOnly(tr *TrackerResponse) []*rtorrent.Tracker {
+	// If there is only one tracker in the response, then we don't need to do anything.
+	if len(tr.Trackers) == 1 {
+		return tr.Trackers
+	}
+
+	// First ensure that Trackers slice inside TrackerResponse are sorted so that they are in a consistent order
+	sort.Sort(tr)
+
+	// Take a copy of the trackers in the response as we don't want to append to the original list of Trackers inside the TrackerResponse
+	trackers := make([]*rtorrent.Tracker, len(tr.Trackers))
+	copy(trackers, tr.Trackers)
+
+	// Now get the first tracker and create a new tracker with the same hash but no index
+	firstTracker := trackers[0]
+	firstTrackerNoIndex := firstTracker.CloneWithTrackerIndex(rtorrent.NewTrackerNoIndex(firstTracker.TrackerIndex().InfoHash))
+
+	// Check the existing list of Trackers in the response to ensure that a tracker with the same hash but no index doesn't already
+	// exist, if it does, then we don't need to add it again.
+	for _, t := range trackers {
+		if t.TrackerIndex().String() == firstTrackerNoIndex.TrackerIndex().String() {
+			return trackers
+		}
+	}
+
+	// Add it to the list of trackers in the Tracker response
+	trackers = append(trackers, firstTrackerNoIndex)
+	return trackers
+}
+
+// cacheTrackersError caches an error for a tracker, this is meant to be an internal method only. We have to be careful as the Tracker may
+// be nil for certain error cases.
+func (c *Cacher) cacheTrackersError(tr *TrackerResponse) {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
@@ -150,9 +262,10 @@ func (c *Cacher) cacheTrackerError(t *rtorrent.Tracker, err error) {
 	// register the error in the error map, so in order to ensure that the request didn't come from a blocking requester where we would
 	// have the chance of blocking forever, we have to do a nuclear option and signal all blocking requests that they should return with
 	// an error.
-	nilTracker := errors.Is(err, rtorrent.ErrNilTrackerIndex) || t == nil
+	err := tr.Error
+	nilTracker := errors.Is(err, rtorrent.ErrNilTrackerIndex)
 	if nilTracker {
-		klog.Errorf("there was an error fetching the requested tracker (ti was likely nil: %v): %v", t, err)
+		klog.Errorf("there was an error fetching the requested tracker (ti was likely nil: %v): %v", tr, err)
 		// Cancel all blocking requests that are currently in flight
 		c.blockingReqCancel()
 		// Setup new blocking request context / cancel function so that we can bail out again in the future if needed
@@ -160,33 +273,70 @@ func (c *Cacher) cacheTrackerError(t *rtorrent.Tracker, err error) {
 		return
 	}
 
-	// Add the current error into the tracker error cache, overriding any existing error that may be there
-	c.trackerRespErrors[*t.TrackerIndex()] = err
+	ts := trackerSliceEnsuringTrackerWithHashOnly(tr)
 
-	// Purge any tracker that may have been obtained for this tracker in the past
-	delete(c.trackerCache, *t.TrackerIndex())
+	// Iterate over all trackers in the response and cache the error for each one. Additionally, we need to purge any data that may have
+	// been stored in the cache for this tracker in the past.
+	for _, t := range ts {
+		// Add the current error into the tracker error cache, overriding any existing error that may be there
+		c.trackerRespErrors[*t.TrackerIndex()] = err
+
+		// Purge any tracker that may have been obtained for this tracker in the past
+		delete(c.trackerCache, *t.TrackerIndex())
+	}
 }
 
+// checkCacheForStaleItems checks the cache for stale items and sends a request to the fetcher to refresh the cache if the item is stale.
 func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
+	klog.V(2).Infof("checking cache for stale items")
 	c.cacheMu.RLock()
-	defer c.cacheMu.Unlock()
+	defer c.cacheMu.RUnlock()
 
 	for ti, tr := range c.trackerCache {
 		if ctx.Done() != nil {
 			return
 		}
 		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
-			c.GetTrackerFromCacheNonBlocking(&ti)
+			klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)
+			fr := &FetchRequest{TrackerIndex: &ti}
+			c.reqChan <- fr
 		}
 	}
 }
 
+// checkCacheCheckChan checks the cache check channel for new requests and sends them to the fetcher if they are not satisfied by the cache.
+func (c *Cacher) checkCacheCheckChan() {
+	for {
+		select {
+		case fr := <-c.cacheCheckChan:
+			tr, ok, _ := c.getTrackerFromCacheOnly(fr.TrackerIndex)
+			if !ok || tr == nil || tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+				select {
+				case c.reqChan <- fr:
+					klog.V(2).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)
+				default:
+					klog.V(2).Infof("fetcher request channel is full, re-queuing the request: %v", fr.TrackerIndex)
+					c.cacheCheckChan <- fr
+					klog.V(2).Infof("pausing for %v for fetcher to catch up", internalCacheCheckInterval)
+					return
+				}
+				continue
+			}
+			klog.V(2).Infof("tracker was found in cache, not sending request to fetcher: %v", fr.TrackerIndex)
+		default:
+			return
+		}
+	}
+}
+
+// Run starts the cacher and runs the main loop for the cacher.
 func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	childWG := &sync.WaitGroup{}
-	c.reqChan = make(chan *FetchRequest)
+	c.cacheCheckChan = make(chan *FetchRequest, maxCacheCheckChanBuffer)
+	c.reqChan = make(chan *FetchRequest, c.cOpts.MaxParallelRequests*parallelRequestsBufferMultiplier)
 	c.resChan = make(chan *TrackerResponse)
 	c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
 
@@ -199,28 +349,38 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 
 	// Setup a timer to check cached items for staleness proactively
 	cacheCheckTicker := time.NewTicker(c.cOpts.MinAge)
+	cacheCheckChanTicker := time.NewTicker(internalCacheCheckInterval)
 
 	// Setup cacher loop
 	for {
 		select {
 		// If we're all done here, then close out our channels and return
 		case <-ctx.Done():
+			klog.Info("cacher has been asked to stop, stopping...")
 			// Close all fetchers
 			close(c.reqChan)
 			// Wait for all fetchers to finish
 			childWG.Wait()
 			close(c.resChan)
+			klog.Info("cacher has stopped")
 			return
 		// If we have a response from the fetcher, then check for errors and cache it if appropriate
 		case resp := <-c.resChan:
+			klog.V(2).Infof("received response from fetcher for tracker: %v", resp)
 			if resp.Error != nil {
-				c.cacheTrackerError(resp.Tracker, resp.Error)
+				c.cacheTrackersError(resp)
 			}
-			c.cacheTracker(resp)
+			c.cacheTrackers(resp)
 		// If our ticker ticks, check cache for stale items proactively
 		case <-cacheCheckTicker.C:
+			klog.V(2).Infof("checking cache for stale items")
 			childWG.Add(1)
 			go c.checkCacheForStaleItems(ctx, childWG)
+		// Moderate our cacheCheckChan to see if we have any requests for new fetches, then check them against the cache, if they are not
+		// yet satisfied by cache, then send them on to the fetchers
+		case <-cacheCheckChanTicker.C:
+			klog.V(3).Infof("checking cache check channel for new requests")
+			c.checkCacheCheckChan()
 		}
 	}
 }

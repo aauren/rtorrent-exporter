@@ -2,43 +2,65 @@ package tracker
 
 import (
 	"context"
-	"math/rand"
+	"fmt"
+	"strings"
 	"sync"
 	"time"
 
 	"github.com/aauren/rtorrent/rtorrent"
+	klog "k8s.io/klog/v2"
 )
 
 // Source is an interface that provides tracker information.
 type Source interface {
-	TrackerWithDetails(ctx context.Context, ti *rtorrent.TrackerIndex, fields []rtorrent.TrackerField) (*rtorrent.Tracker, error)
+	TrackerWithDetails(ctx context.Context, ti *rtorrent.TrackerIndex, fields []rtorrent.TrackerField) ([]*rtorrent.Tracker, error)
 }
 
+// FetchRequest is a construct that contains the request to fetch tracker information.
 type FetchRequest struct {
+	// TrackerIndex contains the hash and optionally an index as well to identify the tracker.
 	*rtorrent.TrackerIndex
+	// Fields is a slice of fields that should be fetched. If this is empty, then all fields will be fetched.
 	Fields []rtorrent.TrackerField
 }
 
+// TrackerResponse is a construct that contains the response from a tracker FetchRequest
 type TrackerResponse struct {
-	*rtorrent.Tracker
-	Error     error
+	// Trackers is a slice of trackers that were fetched. If an index was passed in the TrackerIndex object, then it should only ever
+	// contain a single Tracker. However, if only a hash was passed, then it may contain multiple trackers.
+	Trackers []*rtorrent.Tracker
+	// Error is any errors that were encountered while fetching the trackers.
+	Error error
+	// FetchedAt is the time that the trackers were fetched.
 	FetchedAt time.Time
 }
 
-func (tr *TrackerResponse) IsStale(minAge time.Duration, maxAge time.Duration) bool {
-	if time.Since(tr.FetchedAt) < minAge {
-		return false
+func (tr *TrackerResponse) String() string {
+	if tr.Error != nil {
+		return fmt.Sprintf("TrackerResponse: fetched at: <%s>, Error: <%s>", tr.FetchedAt, tr.Error.Error())
 	}
-	if time.Since(tr.FetchedAt) > maxAge {
-		return true
+	var sb strings.Builder
+	for _, t := range tr.Trackers {
+		sb.WriteString(fmt.Sprintf("\nTrackerResponse: fetched at: <%s>, Value: <%s>", tr.FetchedAt, t))
 	}
+	return sb.String()
+}
 
-	// Generate a random duration between minAge and maxAge
-	//nolint:gosec // we don't care that we are using an insecure random number generator for this purpose
-	randomDuration := minAge + time.Duration(rand.Int63n(int64(maxAge-minAge)))
+// Implement methods to make TrackerResponse sortable
+// Len is the number of elements in the collection.
+func (tr *TrackerResponse) Len() int {
+	return len(tr.Trackers)
+}
 
-	// Compare tr.FetchedAt against the current time minus the random duration
-	return time.Since(tr.FetchedAt) > randomDuration
+// Less uses the string representation of TrackerIndex (which includes the info hash and an index if it exists) to compare two
+// TrackerResponse objects.
+func (tr *TrackerResponse) Less(i, j int) bool {
+	return tr.Trackers[i].TrackerIndex().String() < tr.Trackers[j].TrackerIndex().String()
+}
+
+// Swap swaps the elements with indexes i and j.
+func (tr *TrackerResponse) Swap(i, j int) {
+	tr.Trackers[i], tr.Trackers[j] = tr.Trackers[j], tr.Trackers[i]
 }
 
 // Fetcher is a construct that retrieves tracker information from a Source.
@@ -51,65 +73,67 @@ func NewFetcher(ts Source) *Fetcher {
 	return &Fetcher{ts: ts}
 }
 
-// GetTrackerByHashIndexAllFields retrieves all available fields for a tracker (identified by hash and index). This is implemented as a
+// GetTrackersByHashIndexAllFields retrieves all available fields for a tracker (identified by hash and index). This is implemented as a
 // helper function to avoid having to create a TrackerIndex object.
-func (f *Fetcher) GetTrackerByHashIndexAllFields(ctx context.Context, hash string, index int) (*rtorrent.Tracker, error) {
+func (f *Fetcher) GetTrackersByHashIndexAllFields(ctx context.Context, hash string, index int) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerWithIndex(hash, index)
 	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
 }
 
-// GetTrackerByHashAllFields retrieves all available fields for a tracker (identified by hash). This is implemented as a helper function to
+// GetTrackersByHashAllFields retrieves all available fields for a tracker (identified by hash). This is implemented as a helper function to
 // avoid having to create a TrackerIndex object.
-func (f *Fetcher) GetTrackerByHashAllFields(ctx context.Context, hash string) (*rtorrent.Tracker, error) {
+func (f *Fetcher) GetTrackersByHashAllFields(ctx context.Context, hash string) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerNoIndex(hash)
 	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
 }
 
-// GetTrackerAllFields retrieves all available fields for a tracker (identified by hash and index).
-func (f *Fetcher) GetTrackerAllFields(ctx context.Context, ti *rtorrent.TrackerIndex) (*rtorrent.Tracker, error) {
+// GetTrackersAllFields retrieves all available fields for a tracker (identified by hash and index).
+func (f *Fetcher) GetTrackersAllFields(ctx context.Context, ti *rtorrent.TrackerIndex) ([]*rtorrent.Tracker, error) {
 	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
 }
 
-// GetTrackerByHashIndexSelectedFields retrieves the specified fields for a tracker (identified by hash and index). This is implemented as a
-// helper function to avoid having to create a TrackerIndex object.
-func (f *Fetcher) GetTrackerByHashIndexSelectedFields(ctx context.Context, hash string, index int,
-	fields []rtorrent.TrackerField) (*rtorrent.Tracker, error) {
+// GetTrackersByHashIndexSelectedFields retrieves the specified fields for a tracker (identified by hash and index). This is implemented as
+// a helper function to avoid having to create a TrackerIndex object.
+func (f *Fetcher) GetTrackersByHashIndexSelectedFields(ctx context.Context, hash string, index int,
+	fields []rtorrent.TrackerField) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerWithIndex(hash, index)
 	return f.ts.TrackerWithDetails(ctx, ti, fields)
 }
 
-// GetTrackerByHashSelectedFields retrieves the specified fields for a tracker (identified by hash). This is implemented as a helper
+// GetTrackersByHashSelectedFields retrieves the specified fields for a tracker (identified by hash). This is implemented as a helper
 // function to avoid having to create a TrackerIndex object.
-func (f *Fetcher) GetTrackerByHashSelectedFields(ctx context.Context, hash string,
-	fields []rtorrent.TrackerField) (*rtorrent.Tracker, error) {
+func (f *Fetcher) GetTrackersByHashSelectedFields(ctx context.Context, hash string,
+	fields []rtorrent.TrackerField) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerNoIndex(hash)
 	return f.ts.TrackerWithDetails(ctx, ti, fields)
 }
 
-// GetTrackerSelectedFields retrieves the specified fields for a tracker (identified by hash and index).
-func (f *Fetcher) GetTrackerSelectedFields(ctx context.Context, ti *rtorrent.TrackerIndex,
-	fields []rtorrent.TrackerField) (*rtorrent.Tracker, error) {
+// GetTrackersSelectedFields retrieves the specified fields for a tracker (identified by hash and index).
+func (f *Fetcher) GetTrackersSelectedFields(ctx context.Context, ti *rtorrent.TrackerIndex,
+	fields []rtorrent.TrackerField) ([]*rtorrent.Tracker, error) {
 	return f.ts.TrackerWithDetails(ctx, ti, fields)
 }
 
 func (f *Fetcher) Run(ctx context.Context, wg *sync.WaitGroup, inCH <-chan *FetchRequest, outCH chan<- *TrackerResponse) {
 	defer wg.Done()
+	klog.Infof("starting tracker fetcher thread")
 
 	for {
 		select {
 		case <-ctx.Done():
+			klog.Infof("stopping tracker fetcher thread")
 			return
 		case req := <-inCH:
 			// If fields are specified, then use them when making the request
 			if len(req.Fields) > 0 {
-				resp, err := f.GetTrackerSelectedFields(ctx, req.TrackerIndex, req.Fields)
-				TrackerResponse := &TrackerResponse{Tracker: resp, Error: err, FetchedAt: time.Now()}
+				resp, err := f.GetTrackersSelectedFields(ctx, req.TrackerIndex, req.Fields)
+				TrackerResponse := &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}
 				outCH <- TrackerResponse
 				continue
 			}
 			// If no fields are specified, then retrieve all fields
-			resp, err := f.GetTrackerAllFields(ctx, req.TrackerIndex)
-			TrackerResponse := &TrackerResponse{Tracker: resp, Error: err, FetchedAt: time.Now()}
+			resp, err := f.GetTrackersAllFields(ctx, req.TrackerIndex)
+			TrackerResponse := &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}
 			outCH <- TrackerResponse
 		}
 	}

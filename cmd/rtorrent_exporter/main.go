@@ -54,6 +54,7 @@ func main() {
 	flag.Parse()
 
 	// Validate arguments passed
+	klog.V(1).Info("validating flags")
 	validateFlags()
 
 	// Setup context and wait group for graceful shutdown
@@ -70,6 +71,7 @@ func main() {
 	rt := http.NewRoundTripper(*hcOpts)
 
 	// Setup rtorrent client
+	klog.V(1).Info("creating rTorrent client")
 	c, err := rtorrent.New(*rtorrentAddr, *rt)
 	if err != nil {
 		klog.Fatalf("cannot create rTorrent client: %v", err)
@@ -78,6 +80,7 @@ func main() {
 	// If tracker collection is enabled, then setup the tracker cacher and run it
 	var cacher *tracker.Cacher
 	if *rtorrentTrackersEnabled {
+		klog.Info("tracker tracking enabled, setting up tracker cacher")
 		ts := &rtorrent.TrackerService{C: c}
 		cacher = tracker.NewCacher(ts, tracker.CacheOpts{
 			MaxAge:              *rtorrentTrackersCacheMaxAge,
@@ -85,6 +88,7 @@ func main() {
 			MaxParallelRequests: *rtorrentTrackersCacheMaxParallelRequests,
 		})
 
+		klog.Info("starting tracker cacher")
 		primaryWG.Add(1)
 		go cacher.Run(primaryCtx, primaryWG)
 	}
@@ -97,9 +101,11 @@ func main() {
 	}
 	mh := http.NewMetricHandler(mhOpts)
 	primaryWG.Add(1)
+	klog.Info("starting HTTP server for metrics")
 	go mh.Run(primaryCtx, primaryWG)
 
 	// Setup download collector & pre-warm any caches that may exist
+	klog.Info("setting up rTorrent exporter metrics")
 	colOpts := rtorrentexporter.CollectorOpts{
 		DownloadDetails:    *rtorrentDownloadsCollectDetails,
 		DownloadMessages:   *rtorrentDownloadsCollectMessages,
@@ -107,11 +113,14 @@ func main() {
 		TC:                 cacher,
 	}
 	rte := rtorrentexporter.New(c, colOpts)
+	klog.Info("pre-warming any caches for rTorrent exporter that may exist")
 	err = rte.PreWarmCaches()
+	klog.Info("pre-warming caches for rTorrent exporter complete")
 	if err != nil {
 		klog.Fatalf("failed to pre-warm caches successfully: %v", err)
 	}
 	prometheus.MustRegister(rte)
+	klog.Info("rTorrent exporter metrics setup complete")
 
 	// Output information about the exporter's configuration
 	authEnabled := rtorrentPassword != nil && rtorrentUsername != nil && *rtorrentUsername != "" && *rtorrentPassword != ""
@@ -123,6 +132,7 @@ func main() {
 		*rtorrentDownloadsCollectMessages, *rtorrentTrackersEnabled, *rtorrentTrackersCacheMinAge,
 		*rtorrentTrackersCacheMaxAge, *rtorrentTrackersCacheMaxParallelRequests,
 	)
+	klog.Info("rTorrent exporter started successfully")
 
 	// Handle SIGINT and SIGTERM
 	ch := make(chan os.Signal, 1)

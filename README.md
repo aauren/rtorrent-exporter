@@ -1,4 +1,4 @@
-rtorrent-exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent-exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent_exporter) ![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
+rtorrent-exporter [![GoDoc](http://godoc.org/github.com/aauren/rtorrent-exporter?status.svg)](http://godoc.org/github.com/aauren/rtorrent-exporter) ![Build Status](https://github.com/aauren/rtorrent-exporter/actions/workflows/ci.yml/badge.svg)
 =================
 
 A metric exporter for rtorrent which scrapes the XML-RPC API that rtorrent exposes and then publishes it as metrics.

@@ -199,12 +199,9 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained
 	// a hash now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed
 	// version that was originally looked up.
-	if len(tr.Trackers) > 1 {
-		ti := rtorrent.NewTrackerNoIndex(tr.Trackers[0].TrackerIndex().InfoHash)
-		tr.Trackers = append(tr.Trackers, tr.Trackers[0].CloneWithTrackerIndex(ti))
-	}
+	ts := trackerSliceEnsuringTrackerWithHashOnly(tr)
 
-	for _, t := range tr.Trackers {
+	for _, t := range ts {
 		// Create a new TimedTrackerCacheInstance
 		ttci := &TimedTrackerCacheInstance{
 			Tracker:   t,

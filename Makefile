@@ -16,7 +16,7 @@ clean:
 	rm -f rtorrent-exporter
 
 gofmt:
-	gofmt -l -s $(shell find . -not \( \( -wholename '*/vendor/*' \) -prune \) -name '*.go')
+	@gofmt -l -s $(shell find . -not \( \( -wholename '*/vendor/*' \) -prune \) -name '*.go')
 
 gofmt-fix:
 	goimports -w $(shell find . -not \( \( -wholename '*/vendor/*' \) -prune \) -name '*.go')

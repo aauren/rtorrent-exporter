@@ -9,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/config"
 	"github.com/aauren/rtorrent/rtorrent"
 	klog "k8s.io/klog/v2"
 )
@@ -56,6 +57,13 @@ type CacheOpts struct {
 	MinAge time.Duration
 	// MaxParallelRequests is the maximum number of parallel requests that can be made to the fetcher.
 	MaxParallelRequests int
+	// TrackerNameSubstitutions is a list of tracker name substitutions that can be used to convert tracker names to a different name.
+	TrackerNameSubstitutions []config.TrackerNameSubstitutions
+}
+
+type ModifiedTracker struct {
+	Tracker           *rtorrent.Tracker
+	SubstitutedDomain string
 }
 
 // TimedTrackerCacheInstance is a struct that holds a single tracker and the time that it was fetched. This is what is stored in the
@@ -63,7 +71,7 @@ type CacheOpts struct {
 // does not hold any errors that may have been encountered during the tracker request.
 type TimedTrackerCacheInstance struct {
 	// Tracker is a single tracker that was fetched.
-	Tracker *rtorrent.Tracker
+	Tracker *ModifiedTracker
 	// FetchedAt is the time that the tracker was fetched.
 	FetchedAt time.Time
 }
@@ -119,7 +127,7 @@ func (c *Cacher) getTrackerFromCacheOnly(ti *rtorrent.TrackerIndex) (*TimedTrack
 
 // GetTrackerFromCacheNonBlocking retrieves a tracker from the cache, if it doesn't exist, it will send a fetch request and return nil. In
 // the case of stale cached data, it will return stale data and send a fetch request.
-func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *rtorrent.Tracker {
+func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *ModifiedTracker {
 	klog.V(2).Infof("got non-blocking tracker request for: %v", ti)
 	ttci, ok, _ := c.getTrackerFromCacheOnly(ti)
 	if !ok {
@@ -141,7 +149,7 @@ func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *rtor
 
 // GetTrackerFromCacheBlocking retrieves a tracker from the cache, if it doesn't exist, it will send a fetch request and block until the
 // tracker is available, and then return the tracker. In the case of stale cached data, it will return stale data and send a fetch request
-func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.TrackerIndex) (*rtorrent.Tracker, error) {
+func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.TrackerIndex) (*ModifiedTracker, error) {
 	klog.V(2).Infof("got blocking tracker request for: %v", ti)
 	// This should help protect us from nil tracker problems later on
 	if ti == nil {
@@ -190,6 +198,41 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 	}
 }
 
+func (c *Cacher) parseModifiedTracker(t *rtorrent.Tracker) *ModifiedTracker {
+	// Start off by creating the modified tracker with an embedded tracker instance and an unknown domain
+	mt := &ModifiedTracker{
+		Tracker:           t,
+		SubstitutedDomain: "unknown",
+	}
+
+	// Attempt to get the Domain from the tracker, any errors cause mt to be returned as is
+	url, err := t.URL()
+	if err != nil {
+		klog.Errorf("error getting URL for tracker: %v", err)
+		return mt
+	}
+	mt.SubstitutedDomain, err = GetDomainForTrackerURL(url)
+	if err != nil {
+		klog.Errorf("error getting domain for tracker URL: %v", err)
+		return mt
+	}
+
+	// If there are no substitutions, then we can return the tracker as is
+	if len(c.cOpts.TrackerNameSubstitutions) < 1 {
+		return mt
+	}
+
+	for _, sub := range c.cOpts.TrackerNameSubstitutions {
+		for _, matcher := range sub.CompiledMathers {
+			if matcher.MatchString(mt.SubstitutedDomain) {
+				mt.SubstitutedDomain = sub.ConvertTo
+				return mt
+			}
+		}
+	}
+	return mt
+}
+
 // cacheTracker caches a tracker response and clears any error responses now that we have a successful response, this is meant to be an
 // internal method only.
 func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
@@ -202,9 +245,11 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	ts := trackerSliceEnsuringTrackerWithHashOnly(tr)
 
 	for _, t := range ts {
+		mt := c.parseModifiedTracker(t)
+
 		// Create a new TimedTrackerCacheInstance
 		ttci := &TimedTrackerCacheInstance{
-			Tracker:   t,
+			Tracker:   mt,
 			FetchedAt: tr.FetchedAt,
 		}
 

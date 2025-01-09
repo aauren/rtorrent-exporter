@@ -474,35 +474,21 @@ func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]strin
 
 	// Add the tracker URL to the labels if it is available, otherwise add "unknown" and continue despite errors
 	if c.collectOpts.CollectTrackerInfo {
-		url, err := c.getURLLabel(hash)
-		if err != nil {
-			// We make this error silent as we don't want to make this a failing error
-			klog.Errorf("failed to get tracker URL: %v", err)
-			labels = append(labels, "unknown")
-		} else {
-			labels = append(labels, url)
-		}
+		url := c.getURLLabel(hash)
+		labels = append(labels, url)
 	}
 
 	return labels, nil
 }
 
 // getURLLabel gets the URL label for a given hash.
-func (c *DownloadsCollector) getURLLabel(hash string) (string, error) {
+func (c *DownloadsCollector) getURLLabel(hash string) string {
 	t := c.collectOpts.TC.GetTrackerFromCacheNonBlocking(rtorrent.NewTrackerNoIndex(hash))
 	if t == nil {
-		return "", nil
-	}
-	url, err := t.URL()
-	if err != nil {
-		return "", fmt.Errorf("failed to get tracker URL: %v", err)
-	}
-	urlDomainOnly, err := tracker.GetDomainForTrackerURL(url)
-	if err != nil {
-		return "", fmt.Errorf("failed to get tracker URL: %v", err)
+		return ""
 	}
 
-	return urlDomainOnly, nil
+	return t.SubstitutedDomain
 }
 
 // getDownloadDetailCommands returns the commands to be used for gathering download details.

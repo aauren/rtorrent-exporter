@@ -41,6 +41,8 @@ linters-settings:
           - github.com/aauren/rtorrent-exporter
           - github.com/prometheus
           - k8s.io/klog
+          - github.com/spf13/viper
+          - github.com/spf13/cobra
 issues:
   exclude-rules:
     # Excluding single digits from magic number detector because it produces too many obvious results (like klog)

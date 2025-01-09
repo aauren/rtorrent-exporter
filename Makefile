@@ -59,9 +59,9 @@ ifeq "$(BUILD_IN_DOCKER)" "true"
 		-v $(GO_MOD_CACHE):/go/pkg/mod \
 		-w /go/src/github.com/aauren/rtorrent-exporter $(DOCKER_BUILD_IMAGE) \
 		sh -c \
-		'CGO_ENABLED=0 go build -v -o rtorrent-exporter cmd/rtorrent_exporter/main.go'
+		'CGO_ENABLED=0 go build -v -o rtorrent-exporter main.go'
 else
-	CGO_ENABLED=0 go build -v -o rtorrent-exporter cmd/rtorrent_exporter/main.go
+	CGO_ENABLED=0 go build -v -o rtorrent-exporter main.go
 endif
 
 all: lint test rtorrent-exporter

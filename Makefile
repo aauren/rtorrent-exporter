@@ -1,5 +1,7 @@
 .DEFAULT_GOAL := all
 BUILD_IN_DOCKER?=true
+GO_TEST_NO_CACHE?=false
+GO_TEST_FLAGS?=$(if $(GO_TEST_NO_CACHE),-count=1)
 IS_ROOT=$(filter 0,$(shell id -u))
 IN_DOCKER_GROUP=$(filter docker,$(shell groups))
 DOCKER=$(if $(or $(IN_DOCKER_GROUP),$(IS_ROOT),$(OSX)),docker,sudo docker)
@@ -45,9 +47,9 @@ ifeq "$(BUILD_IN_DOCKER)" "true"
 		-v $(GO_MOD_CACHE):/go/pkg/mod \
 		-w /go/src/github.com/aauren/rtorrent-exporter $(DOCKER_BUILD_IMAGE) \
 		sh -c \
-		'CGO_ENABLED=0 go test -v -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...'
+		'CGO_ENABLED=0 go test -v $(GO_TEST_FLAGS) -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...'
 else
-	go test -v -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...
+	CGO_ENABLED=0 go test -v $(GO_TEST_FLAGS) -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...
 endif
 
 rtorrent-exporter:

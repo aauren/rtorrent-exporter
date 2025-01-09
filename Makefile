@@ -1,4 +1,6 @@
 .DEFAULT_GOAL := all
+BUILD_DATE?=$(shell date +%Y-%m-%dT%H:%M:%S%z)
+GIT_COMMIT=$(shell git describe --tags --dirty)
 BUILD_IN_DOCKER?=true
 GO_TEST_NO_CACHE?=false
 GO_TEST_FLAGS?=$(if $(GO_TEST_NO_CACHE),-count=1)
@@ -59,9 +61,13 @@ ifeq "$(BUILD_IN_DOCKER)" "true"
 		-v $(GO_MOD_CACHE):/go/pkg/mod \
 		-w /go/src/github.com/aauren/rtorrent-exporter $(DOCKER_BUILD_IMAGE) \
 		sh -c \
-		'CGO_ENABLED=0 go build -v -o rtorrent-exporter main.go'
+		'CGO_ENABLED=0 go build -v \
+		-ldflags "-X github.com/aauren/rtorrent-exporter/cmd.Version=$(GIT_COMMIT) -X github.com/aauren/rtorrent-exporter/cmd.BuildDate=$(BUILD_DATE)" \
+		-o rtorrent-exporter main.go'
 else
-	CGO_ENABLED=0 go build -v -o rtorrent-exporter main.go
+	CGO_ENABLED=0 go build -v \
+		-ldflags "-X github.com/aauren/rtorrent-exporter/cmd.Version=$(GIT_COMMIT) -X github.com/aauren/rtorrent-exporter/cmd.BuildDate=$(BUILD_DATE)" \
+		-o rtorrent-exporter main.go
 endif
 
 all: lint test rtorrent-exporter

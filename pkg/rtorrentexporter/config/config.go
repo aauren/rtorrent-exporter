@@ -1,6 +1,7 @@
 package config
 
 import (
+	"regexp"
 	"time"
 )
 
@@ -35,8 +36,16 @@ type CollectConfig struct {
 
 // TrackersConfig is the configuration for controlling whether we collect tracker metrics and how we handle tracker names.
 type TrackersConfig struct {
-	Cache   CacheConfig `mapstructure:"cache"`
-	Enabled bool        `mapstructure:"enabled"`
+	Cache                    CacheConfig                `mapstructure:"cache"`
+	Enabled                  bool                       `mapstructure:"enabled"`
+	TrackerNameSubstitutions []TrackerNameSubstitutions `mapstructure:"tracker-name-substitutions"`
+}
+
+// TrackerNameSubstitutions is a configuration for converting tracker names that match various regex expressions to a new name.
+type TrackerNameSubstitutions struct {
+	ConvertTo       string           `mapstructure:"convert-to"`
+	Matchers        []string         `mapstructure:"matchers"`
+	CompiledMathers []*regexp.Regexp `mapstructure:"-"`
 }
 
 // CacheConfig is the configuration for controlling how we cache tracker information for emitting metrics

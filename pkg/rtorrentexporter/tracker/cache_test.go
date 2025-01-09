@@ -45,8 +45,9 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 		tracker := &rtorrent.Tracker{}
 		tracker = tracker.CloneWithTrackerIndex(&ti)
+		mt := &ModifiedTracker{Tracker: tracker}
 		ttci := &TimedTrackerCacheInstance{
-			Tracker:   tracker,
+			Tracker:   mt,
 			FetchedAt: time.Now(),
 		}
 		c.trackerCache[ti] = ttci
@@ -104,14 +105,15 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 		tracker := &rtorrent.Tracker{}
 		tracker = tracker.CloneWithTrackerIndex(&ti)
+		mt := &ModifiedTracker{Tracker: tracker}
 		ttci := &TimedTrackerCacheInstance{
-			Tracker:   tracker,
+			Tracker:   mt,
 			FetchedAt: time.Now(),
 		}
 		c.trackerCache[ti] = ttci
 
 		result := c.GetTrackerFromCacheNonBlocking(&ti)
-		assert.Equal(t, tracker, result)
+		assert.Equal(t, mt, result)
 
 		foundNoReq := false
 		select {
@@ -138,14 +140,15 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 		tracker := &rtorrent.Tracker{}
 		tracker = tracker.CloneWithTrackerIndex(&ti)
+		mt := &ModifiedTracker{Tracker: tracker}
 		ttci := &TimedTrackerCacheInstance{
-			Tracker:   tracker,
+			Tracker:   mt,
 			FetchedAt: time.Now().Add(-15 * time.Minute),
 		}
 		c.trackerCache[ti] = ttci
 
 		result := c.GetTrackerFromCacheNonBlocking(&ti)
-		assert.Equal(t, tracker, result)
+		assert.Equal(t, mt, result)
 
 		select {
 		case fr := <-c.reqChan:
@@ -194,15 +197,16 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 		tracker := &rtorrent.Tracker{}
 		tracker = tracker.CloneWithTrackerIndex(&ti)
+		mt := &ModifiedTracker{Tracker: tracker}
 		ttci := &TimedTrackerCacheInstance{
-			Tracker:   tracker,
+			Tracker:   mt,
 			FetchedAt: time.Now(),
 		}
 		c.trackerCache[ti] = ttci
 
 		result, err := c.GetTrackerFromCacheBlocking(context.Background(), &ti)
 		assert.NoError(t, err)
-		assert.Equal(t, tracker, result)
+		assert.Equal(t, mt, result)
 	})
 
 	t.Run("tracker not found in cache", func(t *testing.T) {
@@ -224,8 +228,9 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 			time.Sleep(100 * time.Millisecond)
 			tracker := &rtorrent.Tracker{}
 			tracker = tracker.CloneWithTrackerIndex(&ti)
+			mt := &ModifiedTracker{Tracker: tracker}
 			ttci := &TimedTrackerCacheInstance{
-				Tracker:   tracker,
+				Tracker:   mt,
 				FetchedAt: time.Now(),
 			}
 			c.trackerCache[ti] = ttci
@@ -234,7 +239,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		result, err := c.GetTrackerFromCacheBlocking(context.Background(), &ti)
 		assert.NoError(t, err)
 		assert.NotNil(t, result)
-		assert.Equal(t, &ti, result.TrackerIndex())
+		assert.Equal(t, &ti, result.Tracker.TrackerIndex())
 	})
 
 	t.Run("tracker not found in cache, context canceled", func(t *testing.T) {
@@ -298,6 +303,10 @@ func TestCacheTrackers(t *testing.T) {
 		ti := &rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 		tracker := &rtorrent.Tracker{}
 		tracker = tracker.CloneWithTrackerIndex(ti)
+		mt := &ModifiedTracker{
+			Tracker:           tracker,
+			SubstitutedDomain: "unknown",
+		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker},
 			FetchedAt: time.Now(),
@@ -305,7 +314,7 @@ func TestCacheTrackers(t *testing.T) {
 
 		c.cacheTrackers(tr)
 
-		assert.Equal(t, tracker, c.trackerCache[*ti].Tracker)
+		assert.Equal(t, mt, c.trackerCache[*ti].Tracker)
 		assert.Empty(t, c.trackerRespErrors)
 	})
 
@@ -319,10 +328,22 @@ func TestCacheTrackers(t *testing.T) {
 		ti2 := &rtorrent.TrackerIndex{InfoHash: "12345", Index: 2}
 		tracker1 := &rtorrent.Tracker{}
 		tracker1 = tracker1.CloneWithTrackerIndex(ti1)
+		mt1 := &ModifiedTracker{
+			Tracker:           tracker1,
+			SubstitutedDomain: "unknown",
+		}
 		tracker2 := &rtorrent.Tracker{}
 		tracker2 = tracker2.CloneWithTrackerIndex(ti2)
+		mt2 := &ModifiedTracker{
+			Tracker:           tracker2,
+			SubstitutedDomain: "unknown",
+		}
 		ti1HashOnly := rtorrent.NewTrackerNoIndex(ti1.InfoHash)
 		tracker1HashOnly := tracker1.CloneWithTrackerIndex(ti1HashOnly)
+		mt1HashOnly := &ModifiedTracker{
+			Tracker:           tracker1HashOnly,
+			SubstitutedDomain: "unknown",
+		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker1, tracker2},
 			FetchedAt: time.Now(),
@@ -330,9 +351,9 @@ func TestCacheTrackers(t *testing.T) {
 
 		c.cacheTrackers(tr)
 
-		assert.Equal(t, tracker1, c.trackerCache[*ti1].Tracker)
-		assert.Equal(t, tracker2, c.trackerCache[*ti2].Tracker)
-		assert.Equal(t, tracker1HashOnly, c.trackerCache[*ti1HashOnly].Tracker)
+		assert.Equal(t, mt1, c.trackerCache[*ti1].Tracker)
+		assert.Equal(t, mt2, c.trackerCache[*ti2].Tracker)
+		assert.Equal(t, mt1HashOnly, c.trackerCache[*ti1HashOnly].Tracker)
 		assert.Empty(t, c.trackerRespErrors)
 	})
 }
@@ -397,8 +418,9 @@ func TestCheckCacheForStaleItems(t *testing.T) {
 	ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 	tracker := &rtorrent.Tracker{}
 	tracker = tracker.CloneWithTrackerIndex(&ti)
+	mt := &ModifiedTracker{Tracker: tracker}
 	ttci := &TimedTrackerCacheInstance{
-		Tracker:   tracker,
+		Tracker:   mt,
 		FetchedAt: time.Now().Add(-15 * time.Minute),
 	}
 	c.trackerCache[ti] = ttci

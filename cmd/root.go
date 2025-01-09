@@ -5,6 +5,7 @@ import (
 	"flag"
 	"os"
 	"os/signal"
+	"regexp"
 	"sync"
 	"syscall"
 	"time"
@@ -175,9 +176,10 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		klog.Info("tracker tracking enabled, setting up tracker cacher")
 		ts := &rtorrent.TrackerService{C: c}
 		cacher = tracker.NewCacher(ts, tracker.CacheOpts{
-			MaxAge:              rootConfig.Rtorrent.Trackers.Cache.MaxAge,
-			MinAge:              rootConfig.Rtorrent.Trackers.Cache.MinAge,
-			MaxParallelRequests: rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests,
+			MaxAge:                   rootConfig.Rtorrent.Trackers.Cache.MaxAge,
+			MinAge:                   rootConfig.Rtorrent.Trackers.Cache.MinAge,
+			MaxParallelRequests:      rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests,
+			TrackerNameSubstitutions: rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions,
 		})
 
 		klog.Info("starting tracker cacher")
@@ -265,6 +267,22 @@ func validateFlags() {
 		if rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests <= 0 {
 			klog.Fatal("maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker information " +
 				"must be greater than 0")
+		}
+
+		// Attempt to compile all regex matchers
+		for i := range rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions {
+			tns := &rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions[i]
+			if tns.ConvertTo == "" {
+				klog.Fatalf("tracker name substitution %v must have a 'convert-to' value", i)
+			}
+			for _, m := range tns.Matchers {
+				r, err := regexp.Compile(m)
+				if err != nil {
+					klog.Fatalf("failed to compile regexp for tracker (%s) name substitution %v (index %d): %v",
+						tns.ConvertTo, m, i, err)
+				}
+				tns.CompiledMathers = append(tns.CompiledMathers, r)
+			}
 		}
 	}
 }

@@ -291,8 +291,10 @@ func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup
 	defer c.cacheMu.RUnlock()
 
 	for ti, tr := range c.trackerCache {
-		if ctx.Done() != nil {
+		select {
+		case <-ctx.Done():
 			return
+		default:
 		}
 		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
 			klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)

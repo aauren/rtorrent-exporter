@@ -43,7 +43,7 @@ jobs:
         go get ./...
 
     - name: Build
-      run: go build -v -ldflags '-s -w' cmd/rtorrent_exporter/main.go
+      run: go build -v -ldflags '-s -w' main.go
       env:
         CGO_ENABLED: "0"
 

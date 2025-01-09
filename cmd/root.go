@@ -103,6 +103,8 @@ func init() {
 		"[optional] maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker information")
 	_ = viper.BindPFlag("rtorrent.trackers.cache.max-parallel-requests",
 		rootCmd.Flags().Lookup("rtorrent.trackers.cache.max-parallel-requests"))
+
+	rootCmd.AddCommand(versionCmd)
 }
 
 func initConfig() {

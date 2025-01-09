@@ -1,4 +1,5 @@
 ---
+version: 2
 release:
   draft: true
   prerelease: auto
@@ -29,6 +30,9 @@ builds:
     goarm:
       - 6
       - 7
+    ldflags:
+      - "-X github.com/aauren/rtorrent-exporter/cmd.Version={{.Version}}"
+      - "-X github.com/aauren/rtorrent-exporter/cmd.BuildDate={{.Date}}"
 archives:
   - id: primary
     name_template: >-

@@ -31,6 +31,12 @@
     },
     {
       "type": "panel",
+      "id": "stat",
+      "name": "Stat",
+      "version": ""
+    },
+    {
+      "type": "panel",
       "id": "table",
       "name": "Table",
       "version": ""
@@ -65,6 +71,91 @@
   "id": null,
   "links": [],
   "panels": [
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              }
+            ]
+          },
+          "unit": "short"
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byRegexp",
+              "options": "/.*_error/"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-RdYlGr"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      },
+      "id": 10,
+      "maxPerRow": 12,
+      "options": {
+        "colorMode": "value",
+        "graphMode": "area",
+        "justifyMode": "auto",
+        "orientation": "auto",
+        "percentChangeColorMode": "standard",
+        "reduceOptions": {
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "",
+          "values": false
+        },
+        "showPercentChange": false,
+        "textMode": "auto",
+        "wideLayout": true
+      },
+      "pluginVersion": "11.4.0",
+      "repeat": "rtorrent_counts",
+      "repeatDirection": "h",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "rtorrent_downloads_$rtorrent_counts",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          }
+        }
+      ],
+      "title": "$rtorrent_counts",
+      "type": "stat"
+    },
     {
       "datasource": {
         "type": "prometheus",
@@ -124,13 +215,28 @@
           },
           "unit": "short"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "error"
+            },
+            "properties": [
+              {
+                "id": "color",
+                "value": {
+                  "mode": "continuous-RdYlGr"
+                }
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 0
+        "y": 3
       },
       "id": 1,
       "options": {
@@ -303,9 +409,143 @@
           "range": true,
           "refId": "I",
           "useBackend": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "editorMode": "code",
+          "expr": "rtorrent_downloads_error",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "error",
+          "range": true,
+          "refId": "J"
         }
       ],
       "title": "Torrent Totals",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "palette-classic"
+          },
+          "custom": {
+            "axisBorderShow": false,
+            "axisCenteredZero": false,
+            "axisColorMode": "text",
+            "axisLabel": "",
+            "axisPlacement": "auto",
+            "barAlignment": 0,
+            "barWidthFactor": 0.6,
+            "drawStyle": "line",
+            "fillOpacity": 0,
+            "gradientMode": "none",
+            "hideFrom": {
+              "legend": false,
+              "tooltip": false,
+              "viz": false
+            },
+            "insertNulls": false,
+            "lineInterpolation": "linear",
+            "lineWidth": 1,
+            "pointSize": 5,
+            "scaleDistribution": {
+              "type": "linear"
+            },
+            "showPoints": "auto",
+            "spanNulls": true,
+            "stacking": {
+              "group": "A",
+              "mode": "none"
+            },
+            "thresholdsStyle": {
+              "mode": "off"
+            }
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          },
+          "unit": "bytes"
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 11
+      },
+      "id": 3,
+      "options": {
+        "legend": {
+          "calcs": [
+            "max"
+          ],
+          "displayMode": "table",
+          "placement": "bottom",
+          "showLegend": true,
+          "sortBy": "Max",
+          "sortDesc": true
+        },
+        "tooltip": {
+          "maxHeight": 600,
+          "mode": "single",
+          "sort": "none"
+        }
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${prom}"
+          },
+          "disableTextWrap": false,
+          "editorMode": "code",
+          "expr": "increase(rtorrent_downloads_upload_total_bytes[$__rate_interval])",
+          "fullMetaSearch": false,
+          "hide": false,
+          "includeNullMetadata": true,
+          "instant": false,
+          "legendFormat": "Upload: {{name}}",
+          "range": true,
+          "refId": "A",
+          "useBackend": false
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "expr": "increase(rtorrent_downloads_download_total_bytes[$__rate_interval])",
+          "hide": false,
+          "instant": false,
+          "legendFormat": "Download: {{name}}",
+          "range": true,
+          "refId": "B"
+        }
+      ],
+      "title": "Torrent Upload / Download Rates",
       "type": "timeseries"
     },
     {
@@ -373,9 +613,9 @@
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 8
+        "y": 22
       },
-      "id": 3,
+      "id": 12,
       "options": {
         "legend": {
           "calcs": [
@@ -402,12 +642,12 @@
           },
           "disableTextWrap": false,
           "editorMode": "code",
-          "expr": "increase(rtorrent_downloads_upload_total_bytes[$__rate_interval])",
+          "expr": "sum(increase(rtorrent_downloads_upload_total_bytes[$__rate_interval])) by (tracker)",
           "fullMetaSearch": false,
           "hide": false,
           "includeNullMetadata": true,
           "instant": false,
-          "legendFormat": "Upload: {{name}}",
+          "legendFormat": "Upload: {{tracker}}",
           "range": true,
           "refId": "A",
           "useBackend": false
@@ -418,21 +658,117 @@
             "uid": "${prom}"
           },
           "editorMode": "code",
-          "expr": "increase(rtorrent_downloads_download_total_bytes[$__rate_interval])",
+          "expr": "sum(increase(rtorrent_downloads_download_total_bytes[$__rate_interval])) by (tracker)",
           "hide": false,
           "instant": false,
-          "legendFormat": "Download: {{name}}",
+          "legendFormat": "Download: {{tracker}}",
           "range": true,
           "refId": "B"
         }
       ],
-      "title": "Torrent Upload / Download Rates",
+      "title": "Torrent Upload / Download Rates (by tracker)",
       "type": "timeseries"
     },
     {
       "datasource": {
         "type": "prometheus",
         "uid": "${DS_PROMETHEUS}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "continuous-RdYlGr"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "color-text"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "red",
+                "value": null
+              }
+            ]
+          }
+        },
+        "overrides": []
+      },
+      "gridPos": {
+        "h": 8,
+        "w": 24,
+        "x": 0,
+        "y": 33
+      },
+      "id": 11,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true
+      },
+      "pluginVersion": "11.4.0",
+      "targets": [
+        {
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "sum(rtorrent_downloads_messages) by (name, message)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A",
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          }
+        }
+      ],
+      "title": "Tracker Messages",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true,
+              "Value": true,
+              "__name__": true,
+              "info_hash": true,
+              "instance": true,
+              "job": true
+            },
+            "includeByName": {},
+            "indexByName": {
+              "Time": 0,
+              "Value": 7,
+              "__name__": 1,
+              "info_hash": 3,
+              "instance": 4,
+              "job": 5,
+              "message": 6,
+              "name": 2
+            },
+            "renameByName": {}
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${prom}"
       },
       "fieldConfig": {
         "defaults": {
@@ -461,13 +797,26 @@
           },
           "unit": "bytes"
         },
-        "overrides": []
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Ratio"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "Ratio"
+              }
+            ]
+          }
+        ]
       },
       "gridPos": {
         "h": 11,
         "w": 24,
         "x": 0,
-        "y": 19
+        "y": 41
       },
       "id": 8,
       "options": {
@@ -498,7 +847,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${prom}"
+            "uid": "${DS_PROMETHEUS}"
           },
           "disableTextWrap": false,
           "editorMode": "code",
@@ -517,7 +866,7 @@
         {
           "datasource": {
             "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
+            "uid": "${prom}"
           },
           "editorMode": "code",
           "exemplar": false,
@@ -528,6 +877,21 @@
           "legendFormat": "__auto",
           "range": false,
           "refId": "B"
+        },
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${DS_PROMETHEUS}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "rtorrent_downloads_upload_total_bytes / rtorrent_downloads_download_total_bytes",
+          "format": "table",
+          "hide": false,
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "C"
         }
       ],
       "title": "Total Torrent Numbers (Over Current Range)",
@@ -544,9 +908,10 @@
           "options": {
             "include": {
               "names": [
+                "name",
                 "Value #A",
                 "Value #B",
-                "name"
+                "Value #C"
               ]
             }
           }
@@ -560,6 +925,7 @@
             "renameByName": {
               "Value #A": "Upload",
               "Value #B": "Download",
+              "Value #C": "Ratio",
               "name": "Torrent Name"
             }
           }
@@ -592,10 +958,10 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 21,
+        "h": 17,
         "w": 12,
         "x": 0,
-        "y": 30
+        "y": 52
       },
       "id": 9,
       "options": {
@@ -667,12 +1033,12 @@
         "overrides": []
       },
       "gridPos": {
-        "h": 21,
+        "h": 17,
         "w": 12,
         "x": 12,
-        "y": 30
+        "y": 52
       },
-      "id": 5,
+      "id": 13,
       "options": {
         "legend": {
           "displayMode": "table",
@@ -707,7 +1073,7 @@
           "disableTextWrap": false,
           "editorMode": "code",
           "exemplar": false,
-          "expr": "topk(10, sum(increase(rtorrent_downloads_upload_total_bytes[$__range])) by (name))",
+          "expr": "topk(10, sum(increase(rtorrent_downloads_upload_total_bytes[$__range])) by (tracker))",
           "fullMetaSearch": false,
           "includeNullMetadata": true,
           "instant": true,
@@ -717,8 +1083,7 @@
           "useBackend": false
         }
       ],
-      "timeFrom": "3d",
-      "title": "Top 10 Uploaded Last 3 Days",
+      "title": "Top 10 Uploaded Variable (by Tracker)",
       "type": "piechart"
     },
     {
@@ -747,7 +1112,7 @@
         "h": 17,
         "w": 12,
         "x": 0,
-        "y": 51
+        "y": 69
       },
       "id": 4,
       "options": {
@@ -823,7 +1188,7 @@
         "h": 17,
         "w": 12,
         "x": 12,
-        "y": 51
+        "y": 69
       },
       "id": 7,
       "options": {
@@ -873,83 +1238,6 @@
       "timeFrom": "2w",
       "title": "Top 10 Uploaded Last 2 Weeks",
       "type": "piechart"
-    },
-    {
-      "datasource": {
-        "type": "prometheus",
-        "uid": "${prom}"
-      },
-      "fieldConfig": {
-        "defaults": {
-          "color": {
-            "mode": "palette-classic"
-          },
-          "custom": {
-            "hideFrom": {
-              "legend": false,
-              "tooltip": false,
-              "viz": false
-            }
-          },
-          "mappings": [],
-          "unit": "bytes"
-        },
-        "overrides": []
-      },
-      "gridPos": {
-        "h": 17,
-        "w": 12,
-        "x": 0,
-        "y": 68
-      },
-      "id": 6,
-      "options": {
-        "legend": {
-          "displayMode": "table",
-          "placement": "bottom",
-          "showLegend": true,
-          "values": [
-            "percent",
-            "value"
-          ]
-        },
-        "pieType": "pie",
-        "reduceOptions": {
-          "calcs": [
-            "lastNotNull"
-          ],
-          "fields": "",
-          "values": false
-        },
-        "tooltip": {
-          "maxHeight": 600,
-          "mode": "single",
-          "sort": "none"
-        }
-      },
-      "pluginVersion": "11.4.0",
-      "targets": [
-        {
-          "datasource": {
-            "type": "prometheus",
-            "uid": "${DS_PROMETHEUS}"
-          },
-          "disableTextWrap": false,
-          "editorMode": "code",
-          "exemplar": false,
-          "expr": "topk(10, sum(increase(rtorrent_downloads_upload_total_bytes[$__range])) by (name))",
-          "fullMetaSearch": false,
-          "includeNullMetadata": true,
-          "instant": true,
-          "legendFormat": "__auto",
-          "range": false,
-          "refId": "A",
-          "useBackend": false
-        }
-      ],
-      "timeFrom": "1w",
-      "title": "Top 10 Uploaded Last 1 Weeks",
-      "type": "piechart"
     }
   ],
   "refresh": "1m",
@@ -971,17 +1259,80 @@
         "refresh": 1,
         "regex": "",
         "type": "datasource"
+      },
+      {
+        "current": {
+          "text": [
+            "$__all"
+          ],
+          "value": [
+            "$__all"
+          ]
+        },
+        "includeAll": true,
+        "label": "Count Stats to Display",
+        "multi": true,
+        "name": "rtorrent_counts",
+        "options": [
+          {
+            "selected": false,
+            "text": "active",
+            "value": "active"
+          },
+          {
+            "selected": false,
+            "text": "complete",
+            "value": "complete"
+          },
+          {
+            "selected": false,
+            "text": "error",
+            "value": "error"
+          },
+          {
+            "selected": false,
+            "text": "hashing",
+            "value": "hashing"
+          },
+          {
+            "selected": false,
+            "text": "incomplete",
+            "value": "incomplete"
+          },
+          {
+            "selected": false,
+            "text": "leeching",
+            "value": "leeching"
+          },
+          {
+            "selected": false,
+            "text": "seeding",
+            "value": "seeding"
+          },
+          {
+            "selected": false,
+            "text": "started",
+            "value": "started"
+          },
+          {
+            "selected": false,
+            "text": "stopped",
+            "value": "stopped"
+          }
+        ],
+        "query": "active, complete, error, hashing, incomplete, leeching, seeding, started, stopped",
+        "type": "custom"
       }
     ]
   },
   "time": {
-    "from": "now-3h",
+    "from": "now-12h",
     "to": "now"
   },
   "timepicker": {},
   "timezone": "browser",
   "title": "rtorrent",
   "uid": "adroau6wwm7lsa",
-  "version": 18,
+  "version": 27,
   "weekStart": ""
 }

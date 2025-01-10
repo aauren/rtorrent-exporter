@@ -3,7 +3,6 @@ README.md
 .dockerignore
 .vscode
 go.work*
-.git
 .gitignore
 compose.yaml
 dist

@@ -1,6 +1,6 @@
 .DEFAULT_GOAL := all
 BUILD_DATE?=$(shell date +%Y-%m-%dT%H:%M:%S%z)
-GIT_COMMIT=$(shell git describe --tags --dirty)
+GIT_COMMIT=$(shell git -c safe.directory="*" describe --tags --dirty)
 BUILD_IN_DOCKER?=true
 GO_TEST_NO_CACHE?=false
 GO_TEST_FLAGS?=$(if $(GO_TEST_NO_CACHE),-count=1)

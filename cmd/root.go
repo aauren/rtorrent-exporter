@@ -246,7 +246,7 @@ func RunRoot(cmd *cobra.Command, args []string) {
 
 func validateFlags() {
 	if rootConfig.Rtorrent.Addr == "" {
-		klog.Fatal("address of rTorrent XML-RPC server must be specified with '-rtorrent.addr' flag")
+		klog.Fatal("address of rTorrent XML-RPC server must be specified with '--rtorrent.addr' flag")
 	}
 	if rootConfig.Rtorrent.Timeout <= 0 {
 		klog.Fatal("timeout for rTorrent request must be greater than 0")

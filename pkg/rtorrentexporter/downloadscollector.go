@@ -2,6 +2,7 @@ package rtorrentexporter
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
 	"github.com/aauren/rtorrent/rtorrent"
@@ -215,16 +216,20 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 // collect begins a metrics collection task for all metrics related to rTorrent
 // downloads.
 func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
+	started := time.Now()
+	klog.V(1).Info("Collecting downloads metrics")
 	if desc, err := c.collectDownloadCounts(ch); err != nil {
 		return desc, err
 	}
 
 	if c.collectOpts.DownloadDetails {
+		klog.V(1).Info("Collecting download details metrics")
 		if desc, err := c.collectDownloadDetails(ch); err != nil {
 			return desc, err
 		}
 	}
 
+	klog.V(1).Infof("Finished collecting downloads metrics in %v", time.Since(started))
 	return nil, nil
 }
 

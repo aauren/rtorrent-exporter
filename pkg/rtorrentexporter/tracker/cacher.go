@@ -131,7 +131,7 @@ func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *Modi
 	klog.V(2).Infof("got non-blocking tracker request for: %v", ti)
 	ttci, ok, _ := c.getTrackerFromCacheOnly(ti)
 	if !ok {
-		klog.V(1).Infof("tracker was not found in cache, sending request to cache check channel: %v", ti)
+		klog.V(2).Infof("tracker was not found in cache, sending request to cache check channel: %v", ti)
 		fr := &FetchRequest{TrackerIndex: ti}
 		c.cacheCheckChan <- fr
 		return nil
@@ -208,7 +208,7 @@ func (c *Cacher) parseModifiedTracker(t *rtorrent.Tracker) *ModifiedTracker {
 	// Attempt to get the Domain from the tracker, any errors cause mt to be returned as is
 	url, err := t.URL()
 	if err != nil {
-		klog.Errorf("error getting URL for tracker: %v", err)
+		klog.Errorf("error getting URL for tracker (Tracker Index Hash: %s): %v", t.TrackerIndex().String(), err)
 		return mt
 	}
 	mt.SubstitutedDomain, err = GetDomainForTrackerURL(url)
@@ -342,7 +342,7 @@ func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup
 		default:
 		}
 		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
-			klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)
+			klog.V(1).Infof("tracker was found in cache but is stale sending request to fetcher: %v", ti)
 			fr := &FetchRequest{TrackerIndex: &ti}
 			c.reqChan <- fr
 		}
@@ -358,16 +358,15 @@ func (c *Cacher) checkCacheCheckChan() {
 			if !ok || tr == nil || tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
 				select {
 				case c.reqChan <- fr:
-					klog.V(2).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)
+					klog.V(1).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)
 				default:
 					klog.V(2).Infof("fetcher request channel is full, re-queuing the request: %v", fr.TrackerIndex)
 					c.cacheCheckChan <- fr
-					klog.V(2).Infof("pausing for %v for fetcher to catch up", internalCacheCheckInterval)
 					return
 				}
 				continue
 			}
-			klog.V(2).Infof("tracker was found in cache, not sending request to fetcher: %v", fr.TrackerIndex)
+			klog.V(3).Infof("tracker was found in cache, not sending request to fetcher: %v", fr.TrackerIndex)
 		default:
 			return
 		}
@@ -410,20 +409,20 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 			return
 		// If we have a response from the fetcher, then check for errors and cache it if appropriate
 		case resp := <-c.resChan:
-			klog.V(2).Infof("received response from fetcher for tracker: %v", resp)
+			klog.V(3).Infof("received response from fetcher for tracker: %v", resp)
 			if resp.Error != nil {
 				c.cacheTrackersError(resp)
 			}
 			c.cacheTrackers(resp)
 		// If our ticker ticks, check cache for stale items proactively
 		case <-cacheCheckTicker.C:
-			klog.V(2).Infof("checking cache for stale items")
+			klog.V(1).Infof("checking cache for stale items")
 			childWG.Add(1)
 			go c.checkCacheForStaleItems(ctx, childWG)
 		// Moderate our cacheCheckChan to see if we have any requests for new fetches, then check them against the cache, if they are not
 		// yet satisfied by cache, then send them on to the fetchers
 		case <-cacheCheckChanTicker.C:
-			klog.V(3).Infof("checking cache check channel for new requests")
+			klog.V(1).Infof("checking cache check channel for new requests")
 			c.checkCacheCheckChan()
 		}
 	}

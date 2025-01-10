@@ -1,8 +1,8 @@
 ---
 services:
   rtorrent_exporter:
-    image: "aauren/rtorrent_exporter:2024071001"
-    container_name: rtorrent_exporter
+    image: "aauren/rtorrent-exporter:latest"
+    container_name: rtorrent-exporter
     restart: unless-stopped
     ports:
       - 9135:9135
@@ -29,6 +29,9 @@ services:
       # If you want to disable high cardinality metrics, but lose some visibility into individual torrent metrics
       # - "-rtorrent.downloads.collect.details"
       # - "false"
+    # If you have a config file that you want to pass to rtorrent-exporter
+    # volumes:
+    #   - "/path/to/rtorrent_exporter.yaml:/.rtorrent_exporter.yaml"
 networks:
   rtorrent_exporter:
     ipam:

@@ -422,7 +422,7 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 		// Moderate our cacheCheckChan to see if we have any requests for new fetches, then check them against the cache, if they are not
 		// yet satisfied by cache, then send them on to the fetchers
 		case <-cacheCheckChanTicker.C:
-			klog.V(1).Infof("checking cache check channel for new requests")
+			klog.V(3).Infof("checking cache check channel for new requests")
 			c.checkCacheCheckChan()
 		}
 	}

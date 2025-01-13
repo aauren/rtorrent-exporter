@@ -57,7 +57,8 @@ type CacheConfig struct {
 
 // TelemetryConfig is the configuration for the telemetry server.
 type TelemetryConfig struct {
-	Addr    string        `mapstructure:"addr"`
-	Path    string        `mapstructure:"path"`
-	Timeout time.Duration `mapstructure:"timeout"`
+	Addr        string        `mapstructure:"addr"`
+	Path        string        `mapstructure:"path"`
+	Timeout     time.Duration `mapstructure:"timeout"`
+	EnablePProf bool          `mapstructure:"enable-pprof"`
 }

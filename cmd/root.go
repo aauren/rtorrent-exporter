@@ -3,6 +3,10 @@ package cmd
 import (
 	"context"
 	"flag"
+	nethttp "net/http"
+
+	//nolint:gosec // pprof still needs to be imported despite what gosec thinks
+	_ "net/http/pprof"
 	"os"
 	"os/signal"
 	"regexp"
@@ -64,6 +68,9 @@ func init() {
 	rootCmd.Flags().DurationVar(&rootConfig.Telemetry.Timeout, "telemetry.timeout", 10*time.Second,
 		"[optional] duration of how long to wait to receive http headers on telemetry addr")
 	_ = viper.BindPFlag("telemetry.timeout", rootCmd.Flags().Lookup("telemetry.timeout"))
+	rootCmd.Flags().BoolVar(&rootConfig.Telemetry.EnablePProf, "telemetry.enable-pprof", false,
+		"[optional] enable pprof endpoints on rtorrent-exporter (for advanced debugging)")
+	_ = viper.BindPFlag("telemetry.enable-pprof", rootCmd.Flags().Lookup("telemetry.enable-pprof"))
 
 	// Setup rTorrent client connection flags
 	rootCmd.Flags().StringVar(&rootConfig.Rtorrent.Addr, "rtorrent.addr", "", "address of rTorrent XML-RPC server")
@@ -138,10 +145,18 @@ func initConfig() {
 }
 
 func RunRoot(cmd *cobra.Command, args []string) {
-
 	// Validate arguments passed
 	klog.V(1).Info("validating flags")
 	validateFlags()
+
+	// Enable pprof for advanced debugging early if requested
+	if rootConfig.Telemetry.EnablePProf {
+		go func() {
+			klog.Infof("starting pprof server on %q", "localhost:6060")
+			//nolint:gosec // pprof is a debugging tool we don't care about timeouts
+			klog.Info(nethttp.ListenAndServe("0.0.0.0:6060", nil))
+		}()
+	}
 
 	if writeConfig {
 		klog.Info("writing configuration to file")

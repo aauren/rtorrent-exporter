@@ -344,7 +344,12 @@ func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup
 		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
 			klog.V(1).Infof("tracker was found in cache but is stale sending request to fetcher: %v", ti)
 			fr := &FetchRequest{TrackerIndex: &ti}
-			c.reqChan <- fr
+			select {
+			case c.reqChan <- fr:
+				klog.V(1).Info("successfully sent request to fetcher")
+			default:
+				klog.Warningf("fetcher request channel is full, unable to send request: %v", ti)
+			}
 		}
 	}
 }

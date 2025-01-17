@@ -385,7 +385,7 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 	childWG := &sync.WaitGroup{}
 	c.cacheCheckChan = make(chan *FetchRequest, maxCacheCheckChanBuffer)
 	c.reqChan = make(chan *FetchRequest, c.cOpts.MaxParallelRequests*parallelRequestsBufferMultiplier)
-	c.resChan = make(chan *TrackerResponse)
+	c.resChan = make(chan *TrackerResponse, c.cOpts.MaxParallelRequests*parallelRequestsBufferMultiplier)
 	c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
 
 	// Setup fetchers up to the maximum number of allowed parallel requests

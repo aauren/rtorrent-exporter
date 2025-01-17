@@ -26,7 +26,7 @@ const (
 	maxCacheCheckChanBuffer = 100000
 	// The parallelRequestsBufferMultiplier is multiplied by the max parallel requests given by the user at runtime to determine the size of
 	// the request channel buffer. This is to ensure that we can handle a burst of requests without blocking the fetchers.
-	parallelRequestsBufferMultiplier = 3
+	parallelRequestsBufferMultiplier = 10
 )
 
 // Cacher is a construct that caches the results of a Tracker Fetcher for a specified min / max time and according to a set number of

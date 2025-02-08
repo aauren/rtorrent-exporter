@@ -470,7 +470,7 @@ func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]strin
 	}
 	name, ok := torSlice[1].(string)
 	if !ok {
-		return nil, fmt.Errorf("failed to convert torrent name to string")
+		return nil, fmt.Errorf("failed to convert torrent name to string, for hash: %s", hash)
 	}
 	labels := []string{
 		hash,

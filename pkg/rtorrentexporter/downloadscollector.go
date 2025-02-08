@@ -348,7 +348,7 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 	for _, a := range all {
 		hadErrorMessage, err := c.parseDownloadDetailsMetrics(a, cmds, ch)
 		if err != nil {
-			return c.DownloadRateBytes, err
+			klog.Errorf("failed to parse download details metrics: %v", err)
 		}
 		if hadErrorMessage {
 			failedDownloads++

@@ -7,6 +7,7 @@ services:
     ports:
       - 9135:9135
     command:
+      - "/rtorrent-exporter"
       # You'll want to ensure that:
       # - 172.28.1.0/24 is a subnet that is not in use on your network (if it is, then change this and the IPAM config below)
       # - You don't have any host firewalls that block traffic to/from this subnet to your rtorrent URL

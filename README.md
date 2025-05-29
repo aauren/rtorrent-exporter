@@ -13,10 +13,10 @@ Specific additions made by this fork:
 
 * Support self-signed (non-official) certificates
 * Allow setting timeouts on all HTTP / XMLRPC calls
-* Allow disabling high-cardinality metrics (`-rtorrent.downloads.collect.details`)
+* Allow disabling high-cardinality metrics (`--rtorrent.downloads.collect.details`)
 * Reports torrents with errors via `rtorrent_downloads_error` gauge
-* Reports tracker messages via `rtorrent_downloads_messages` (can be disabled by setting `-rtorrent.downloads.collect.messages` to `false`
-* Adds tracker domains to the metric labels (can be disabled by setting `-rtorrent.trackers.enabled` to `false`)
+* Reports tracker messages via `rtorrent_downloads_messages` (can be disabled by setting `--rtorrent.downloads.collect.messages` to `false`
+* Adds tracker domains to the metric labels (can be disabled by setting `--rtorrent.trackers.enabled` to `false`)
 * Improve performance for greater numbers of torrents (especially helpful if you have >100 torrents)
 * Add ability to configure rtorrent-exporter via a configuration file (in addition to command-line parameters)
 
@@ -76,22 +76,22 @@ Flags:
 An example of using `rtorrent-exporter` with a specific endpoint:
 
 ```sh
-$ ./rtorrent-exporter -rtorrent.addr http://127.0.0.1/RPC2
+$ ./rtorrent-exporter --rtorrent.addr http://127.0.0.1/RPC2
 2016/03/09 17:39:40 starting rTorrent exporter on ":9135" for server "http://127.0.0.1/RPC2"
 ```
 
 Example where tracker fetching is disabled
 
 ```sh
-./rtorrent-exporter -rtorrent.addr http://127.0.0.1/RPC2 -rtorrent.trackers.enabled=false
+./rtorrent-exporter --rtorrent.addr http://127.0.0.1/RPC2 --rtorrent.trackers.enabled=false
 ```
 
 More complete example where username / password are specified along with insecure for using an unsigend certificate, along with specifying
 `-v 1` to enable more verbose logging
 
 ```sh
-./rtorrent-exporter -rtorrent.addr "https://127.0.0.1/RPC2" -rtorrent.username "<your-user-here>" -rtorrent.password "<pass-here>" \
--rtorrent.insecure=true -rtorrent.trackers.cache.max-parallel-requests 10 -v 1
+./rtorrent-exporter --rtorrent.addr "https://127.0.0.1/RPC2" --rtorrent.username "<your-user-here>" --rtorrent.password "<pass-here>" \
+--rtorrent.insecure=true --rtorrent.trackers.cache.max-parallel-requests 10 -v 1
 ```
 
 Config File
@@ -159,11 +159,11 @@ A Note About Enabling Some Options
 
 Not all options can be enabled without certain trade-offs. Below I attempt to describe what some of the trade-offs are for various options.
 
-* `-rtorrent.downloads.collect.details` - Adds metrics that will tell the user how much bytes the torrent has transferred which is
+* `--rtorrent.downloads.collect.details` - Adds metrics that will tell the user how much bytes the torrent has transferred which is
   one of the key metrics produced by this exporter. However, it will also add the torrent hash and the torrent name as a label to each of
   these metrics which will greatly increase the cardinality of metrics produced. If you have a lot of metrics, this may end up hurting your
   Prometheus performance as each of these is a unique value.
-* `-rtorrent.trackers.enabled` - Adds an additional label to all of the detailed metrics that will tell you the domain of the tracker that
+* `--rtorrent.trackers.enabled` - Adds an additional label to all of the detailed metrics that will tell you the domain of the tracker that
   the individual torrent uploaded against. This is really helpful if you want to see coarse statistics by tracker. However, the only way to
   get this information from rtorrent is to request it for each individual torrent.
   * Because of this rtorrent-exporter has a cache that allows rtorrent-exporter to keep from having to continually request this information
@@ -171,9 +171,9 @@ Not all options can be enabled without certain trade-offs. Below I attempt to de
     in the following:
     * Initial load of the tracker label may be slow to populate depending on how many torrents you have
     * Each restart of rtorrent-exporter will cause a cascade of requests to the rtorrent server to initially populate the cache
-  * You can tune how many requests are made at once by setting: `-rtorrent.trackers.cache.max-parallel-requests`
-  * You can affect when trackers are considered stale within the cache by adjusting: `-rtorrent.trackers.cache.min-age` and
-    `-rtorrent.trackers.cache.max-age`
+  * You can tune how many requests are made at once by setting: `--rtorrent.trackers.cache.max-parallel-requests`
+  * You can affect when trackers are considered stale within the cache by adjusting: `--rtorrent.trackers.cache.min-age` and
+    `--rtorrent.trackers.cache.max-age`
 
 By default all of the above options are enabled, unless you disable them specifically.
 
@@ -189,7 +189,7 @@ Docker
 Docker Hub repo can be found here: [rtorrent-exporter](https://hub.docker.com/repository/docker/aauren/rtorrent-exporter/general)
 
 ```sh
-docker run -ti --rm -p 9135:9135 --add-host=host.docker.internal:host-gateway "aauren/rtorrent-exporter:latest" -rtorrent.addr https://host.docker.internal/RPC2 -rtorrent.username "<http_basic_auth_user>" -rtorrent.password "<http_basic_auth_pass>" "-rtorrent.insecure" true
+docker run -ti --rm -p 9135:9135 --add-host=host.docker.internal:host-gateway "aauren/rtorrent-exporter:latest" --rtorrent.addr https://host.docker.internal/RPC2 --rtorrent.username "<http_basic_auth_user>" --rtorrent.password "<http_basic_auth_pass>" --rtorrent.insecure true
 ```
 
 Docker Compose

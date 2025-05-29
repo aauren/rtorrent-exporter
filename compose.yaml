@@ -9,26 +9,27 @@ services:
     command:
       - "/rtorrent-exporter"
       # You'll want to ensure that:
-      # - 172.28.1.0/24 is a subnet that is not in use on your network (if it is, then change this and the IPAM config below)
+      # - 172.28.1.0/24 is a subnet that is not in use on your network (if it is, then change this and the IPAM config
+      #   below)
       # - You don't have any host firewalls that block traffic to/from this subnet to your rtorrent URL
-      - "-rtorrent.addr"
+      - "--rtorrent.addr"
       - "https://172.28.1.1/RPC2"
       # Optional
       # If you use HTTP basic authentication with your rtorrent XMLRPC URL
-      # - "-rtorrent.username"
+      # - "--rtorrent.username"
       # - "<username>"
-      # - "-rtorrent.password"
+      # - "--rtorrent.password"
       # - "<password>"
       # If you use a self-signed certificate with your rtorrent XMLRPC URL
-      # - "rtorrent.insecure"
+      # - "--rtorrent.insecure"
       # - "true"
       # If you want to tune any timeouts
-      # - "-rtorrent.timeout"
+      # - "--rtorrent.timeout"
       # - "5s"
-      # - "-telemetry.timeout"
+      # - "--telemetry.timeout"
       # - "5s"
       # If you want to disable high cardinality metrics, but lose some visibility into individual torrent metrics
-      # - "-rtorrent.downloads.collect.details"
+      # - "--rtorrent.downloads.collect.details"
       # - "false"
     # If you have a config file that you want to pass to rtorrent-exporter
     # volumes:

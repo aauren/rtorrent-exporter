@@ -1,6 +1,7 @@
 package http
 
 import (
+	"context"
 	"crypto/tls"
 	"net"
 	"net/http"
@@ -34,7 +35,7 @@ func NewRoundTripper(opts ClientOpts) *http.RoundTripper {
 			Username: opts.Username,
 			Password: opts.Password,
 			Transport: &http.Transport{
-				Dial: t.dialTimeout,
+				DialContext: t.dialTimeout,
 				TLSClientConfig: &tls.Config{
 					//nolint:gosec // we don't care that this may be true, that's the point
 					InsecureSkipVerify: opts.Insecure,
@@ -44,7 +45,7 @@ func NewRoundTripper(opts ClientOpts) *http.RoundTripper {
 	} else {
 		rt = &authRoundTripper{
 			Transport: &http.Transport{
-				Dial: t.dialTimeout,
+				DialContext: t.dialTimeout,
 				TLSClientConfig: &tls.Config{
 					//nolint:gosec // we don't care that this may be true, that's the point
 					InsecureSkipVerify: opts.Insecure,
@@ -55,8 +56,11 @@ func NewRoundTripper(opts ClientOpts) *http.RoundTripper {
 	return &rt
 }
 
-func (t *timeout) dialTimeout(network, addr string) (net.Conn, error) {
-	return net.DialTimeout(network, addr, t.DialTimeout)
+func (t *timeout) dialTimeout(ctx context.Context, network, addr string) (net.Conn, error) {
+	dialer := &net.Dialer{
+		Timeout: t.DialTimeout,
+	}
+	return dialer.DialContext(ctx, network, addr)
 }
 
 func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {

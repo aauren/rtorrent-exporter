@@ -65,8 +65,11 @@ Flags:
       --skip_log_headers                                    If true, avoid headers when opening log files (no effect when -logtostderr=true)
       --stderrthreshold severity                            logs at or above this threshold go to stderr when writing to files and stderr (no effect when -logtostderr=true or -alsologtostderr=true) (default 2)
       --telemetry.addr string                               host:port for rTorrent exporter (default ":9135")
+      --telemetry.enable-pprof                              [optional] enable pprof endpoints on rtorrent-exporter (for advanced debugging)
+      --telemetry.password string                           Password to be used for basic authentication to the metrics endpoint
       --telemetry.path string                               URL path for surfacing collected metrics (default "/metrics")
       --telemetry.timeout duration                          [optional] duration of how long to wait to receive http headers on telemetry addr (default 10s)
+      --telemetry.username string                           Username to be used for basic authentication to the metrics endpoint
   -v, --v Level                                             number for the log level verbosity
       --viper                                               use Viper for configuration (default true)
       --vmodule moduleSpec                                  comma-separated list of pattern=N settings for file-filtered logging
@@ -138,6 +141,9 @@ telemetry:
     addr: :9135
     path: /metrics
     timeout: 10s
+    # Optional username / password for metrics access
+    # username: foo
+    # password: bar
 useviper: true
 ```
 

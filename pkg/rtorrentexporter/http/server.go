@@ -2,6 +2,7 @@ package http
 
 import (
 	"context"
+	"crypto/subtle"
 	"net/http"
 	"sync"
 	"time"
@@ -15,9 +16,27 @@ type MetricHandler struct {
 }
 
 type MetricHandlerOpts struct {
-	MetricsPath    string
 	MetricsAddr    string
+	MetricsPass    string
+	MetricsPath    string
 	MetricsTimeout time.Duration
+	MetricsUser    string
+}
+
+func basicAuth(next http.Handler, user, pass string) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		u, p, ok := r.BasicAuth()
+		// subtle.ConstantTimeCompare() used below to remove possibility of HTTP timing attacks
+		if !ok ||
+			subtle.ConstantTimeCompare([]byte(u), []byte(user)) != 1 ||
+			subtle.ConstantTimeCompare([]byte(p), []byte(pass)) != 1 {
+			klog.Warningf("Unauthorized attempt made on endpoint with user: %s", u)
+			w.Header().Set("WWW-Authenticate", `Basic realm="restricted"`)
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }
 
 func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
@@ -30,11 +49,17 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 		http.Redirect(w, r, opts.MetricsPath, http.StatusMovedPermanently)
 	})
 
+	var hand http.Handler
+	hand = mux
+	if opts.MetricsUser != "" && opts.MetricsPass != "" {
+		hand = basicAuth(mux, opts.MetricsUser, opts.MetricsPass)
+	}
+
 	// Configure HTTP Server
 	server := &http.Server{
 		Addr:              opts.MetricsAddr,
 		ReadHeaderTimeout: opts.MetricsTimeout,
-		Handler:           mux,
+		Handler:           hand,
 	}
 
 	return &MetricHandler{

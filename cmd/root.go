@@ -63,11 +63,18 @@ func init() {
 	// Setup telemetry flags
 	rootCmd.Flags().StringVar(&rootConfig.Telemetry.Addr, "telemetry.addr", ":9135", "host:port for rTorrent exporter")
 	_ = viper.BindPFlag("telemetry.addr", rootCmd.Flags().Lookup("telemetry.addr"))
-	rootCmd.Flags().StringVar(&rootConfig.Telemetry.Path, "telemetry.path", "/metrics", "URL path for surfacing collected metrics")
+	rootCmd.Flags().StringVar(&rootConfig.Telemetry.Password, "telemetry.password", "",
+		"Password to be used for basic authentication to the metrics endpoint")
+	_ = viper.BindPFlag("telemetry.password", rootCmd.Flags().Lookup("telemetry.password"))
+	rootCmd.Flags().StringVar(&rootConfig.Telemetry.Path, "telemetry.path", "/metrics",
+		"URL path for surfacing collected metrics")
 	_ = viper.BindPFlag("telemetry.path", rootCmd.Flags().Lookup("telemetry.path"))
 	rootCmd.Flags().DurationVar(&rootConfig.Telemetry.Timeout, "telemetry.timeout", 10*time.Second,
 		"[optional] duration of how long to wait to receive http headers on telemetry addr")
 	_ = viper.BindPFlag("telemetry.timeout", rootCmd.Flags().Lookup("telemetry.timeout"))
+	rootCmd.Flags().StringVar(&rootConfig.Telemetry.Username, "telemetry.username", "",
+		"Username to be used for basic authentication to the metrics endpoint")
+	_ = viper.BindPFlag("telemetry.username", rootCmd.Flags().Lookup("telemetry.username"))
 	rootCmd.Flags().BoolVar(&rootConfig.Telemetry.EnablePProf, "telemetry.enable-pprof", false,
 		"[optional] enable pprof endpoints on rtorrent-exporter (for advanced debugging)")
 	_ = viper.BindPFlag("telemetry.enable-pprof", rootCmd.Flags().Lookup("telemetry.enable-pprof"))
@@ -207,9 +214,11 @@ func RunRoot(cmd *cobra.Command, args []string) {
 
 	// Setup HTTP server for metrics and run it
 	mhOpts := http.MetricHandlerOpts{
-		MetricsPath:    rootConfig.Telemetry.Path,
 		MetricsAddr:    rootConfig.Telemetry.Addr,
+		MetricsPass:    rootConfig.Telemetry.Password,
+		MetricsPath:    rootConfig.Telemetry.Path,
 		MetricsTimeout: rootConfig.Telemetry.Timeout,
+		MetricsUser:    rootConfig.Telemetry.Username,
 	}
 	mh := http.NewMetricHandler(mhOpts)
 	primaryWG.Add(1)
@@ -270,10 +279,23 @@ func validateFlags() {
 		klog.Fatal("timeout for telemetry request must be greater than 0")
 	}
 
+	// Validate telemetry settings
+	telemetryUserSet := rootConfig.Telemetry.Username != ""
+	telemetryPassSet := rootConfig.Telemetry.Password != ""
+	if telemetryUserSet != telemetryPassSet {
+		klog.Fatal("telemetry basic authentication requires both '--telemetry.username' and '--telemetry.password' to be set (or neither)")
+	}
+
 	// Validate tracker settings
+	rtorrentUserSet := rootConfig.Rtorrent.Username != ""
+	rtorrentPassSet := rootConfig.Rtorrent.Password != ""
+	if rtorrentUserSet != rtorrentPassSet {
+		klog.Fatal("rTorrent basic authentication requires both '--rtorrent.username' and '--rtorrent.password' to be set (or neither)")
+	}
+
 	if rootConfig.Rtorrent.Trackers.Enabled && !rootConfig.Rtorrent.Downloads.Collect.Details {
-		klog.Fatal("collecting tracker information requires collecting download details, please either disable rtorrent.trackers.enabled " +
-			"or enable rtorrent.downloads.collect.details")
+		klog.Fatal("collecting tracker information requires collecting download details, please either disable " +
+			"rtorrent.trackers.enabled or enable rtorrent.downloads.collect.details")
 	}
 	if rootConfig.Rtorrent.Trackers.Enabled {
 		if rootConfig.Rtorrent.Trackers.Cache.MinAge <= 0 {

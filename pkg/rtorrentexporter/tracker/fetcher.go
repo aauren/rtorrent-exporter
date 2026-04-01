@@ -41,7 +41,7 @@ func (tr *TrackerResponse) String() string {
 	}
 	var sb strings.Builder
 	for _, t := range tr.Trackers {
-		sb.WriteString(fmt.Sprintf("\nTrackerResponse: fetched at: <%s>, Value: <%s>", tr.FetchedAt, t))
+		fmt.Fprintf(&sb, "\nTrackerResponse: fetched at: <%s>, Value: <%s>", tr.FetchedAt, t)
 	}
 	return sb.String()
 }

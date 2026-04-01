@@ -417,6 +417,7 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 			klog.V(3).Infof("received response from fetcher for tracker: %v", resp)
 			if resp.Error != nil {
 				c.cacheTrackersError(resp)
+				continue
 			}
 			c.cacheTrackers(resp)
 		// If our ticker ticks, check cache for stale items proactively

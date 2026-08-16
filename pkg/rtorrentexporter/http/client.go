@@ -27,33 +27,28 @@ type authRoundTripper struct {
 	Transport *http.Transport
 }
 
-func NewRoundTripper(opts ClientOpts) *http.RoundTripper {
-	var rt http.RoundTripper
+func NewRoundTripper(opts ClientOpts) http.RoundTripper {
 	t := &timeout{DialTimeout: opts.DialTimeout}
-	if opts.Username != "" && opts.Password != "" {
-		rt = &authRoundTripper{
-			Username: opts.Username,
-			Password: opts.Password,
-			Transport: &http.Transport{
-				DialContext: t.dialTimeout,
-				TLSClientConfig: &tls.Config{
-					//nolint:gosec // we don't care that this may be true, that's the point
-					InsecureSkipVerify: opts.Insecure,
-				},
+	rt := &authRoundTripper{
+		Transport: &http.Transport{
+			// We build the transport by hand rather than cloning http.DefaultTransport, so proxy support has to be asked for explicitly
+			Proxy:       http.ProxyFromEnvironment,
+			DialContext: t.dialTimeout,
+			TLSClientConfig: &tls.Config{
+				MinVersion: tls.VersionTLS12,
+				//nolint:gosec // we don't care that this may be true, that's the point
+				InsecureSkipVerify: opts.Insecure,
 			},
-		}
-	} else {
-		rt = &authRoundTripper{
-			Transport: &http.Transport{
-				DialContext: t.dialTimeout,
-				TLSClientConfig: &tls.Config{
-					//nolint:gosec // we don't care that this may be true, that's the point
-					InsecureSkipVerify: opts.Insecure,
-				},
-			},
-		}
+		},
 	}
-	return &rt
+
+	// Only carry credentials when we have both halves, so that RoundTrip knows it can skip the Authorization header entirely
+	if opts.Username != "" && opts.Password != "" {
+		rt.Username = opts.Username
+		rt.Password = opts.Password
+	}
+
+	return rt
 }
 
 func (t *timeout) dialTimeout(ctx context.Context, network, addr string) (net.Conn, error) {

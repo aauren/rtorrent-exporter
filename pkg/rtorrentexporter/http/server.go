@@ -4,12 +4,16 @@ import (
 	"context"
 	"crypto/subtle"
 	"errors"
+	"fmt"
 	"net/http"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
 )
+
+// shutdownTimeout is how long we let in-flight requests drain before giving up on a graceful shutdown
+const shutdownTimeout = 10 * time.Second
 
 type MetricHandler struct {
 	Server *http.Server
@@ -70,21 +74,39 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 	}
 }
 
-func (m *MetricHandler) Run(ctx context.Context) {
+// Run serves metrics until ctx is cancelled or the listener fails, and then shuts the server down. It reports the reason it stopped rather
+// than killing the process, because deciding that a failure is fatal is the caller's business and not a library's
+func (m *MetricHandler) Run(ctx context.Context) error {
 	klog.Infof("Starting HTTP server on %s", m.Server.Addr)
 
+	// Buffered so that the goroutine can always report and exit, even when nobody is left to receive
+	srvErr := make(chan error, 1)
 	go func() {
-		// ListenAndServe always returns ErrServerClosed once Shutdown has been called, so we can't treat that as fatal or an orderly
-		// termination races us into killing the process before Run gets a chance to return
-		if err := m.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
-			klog.Fatalf("HTTP server error: %v", err)
+		err := m.Server.ListenAndServe()
+		// ListenAndServe always returns ErrServerClosed once Shutdown has been called, which is the one outcome that isn't a failure
+		if errors.Is(err, http.ErrServerClosed) {
+			err = nil
 		}
+		srvErr <- err
 	}()
 
-	<-ctx.Done()
+	select {
+	case err := <-srvErr:
+		if err != nil {
+			return fmt.Errorf("HTTP server on %s failed: %w", m.Server.Addr, err)
+		}
+		return nil
+	case <-ctx.Done():
+	}
+
 	klog.Infof("We've been asked to stop the HTTP server")
 	klog.Infof("Shutting down HTTP server on %s", m.Server.Addr)
-	if err := m.Server.Shutdown(context.Background()); err != nil {
-		klog.Fatalf("HTTP server shutdown error: %v", err)
+	// Bound the drain, because an in-flight scrape that never finishes shouldn't be able to hold shutdown open forever
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+	defer cancel()
+	if err := m.Server.Shutdown(shutdownCtx); err != nil {
+		return fmt.Errorf("HTTP server shutdown error: %w", err)
 	}
+
+	return nil
 }

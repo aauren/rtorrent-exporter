@@ -32,6 +32,14 @@ const (
 	unknownDomain = "unknown"
 )
 
+var (
+	// ErrNilTrackerIndex is returned when a caller asks the cacher for a tracker without telling it which tracker it wants.
+	ErrNilTrackerIndex = errors.New("tracker index cannot be nil")
+	// ErrBlockingRequestCancelled means a fetch failed in a way that left us unable to attribute the error to any one tracker, so every
+	// blocking request in flight was cancelled. Retrying is reasonable, which is why callers get something they can match on.
+	ErrBlockingRequestCancelled = errors.New("blocking request was cancelled for an unknown error, try request again")
+)
+
 // Cacher is a construct that caches the results of a Tracker Fetcher for a specified min / max time and according to a set number of
 // maximum parallel requests.
 type Cacher struct {
@@ -173,7 +181,7 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 	klog.V(2).Infof("got blocking tracker request for: %v", ti)
 	// This should help protect us from nil tracker problems later on
 	if ti == nil {
-		return nil, fmt.Errorf("tracker index cannot be nil")
+		return nil, ErrNilTrackerIndex
 	}
 
 	// See if we're able to get a non-blocking version of this tracker from the cache first, if not this will also send our fetch request
@@ -213,7 +221,7 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 		case <-blockingCancelCtx.Done():
 			klog.Infof("all blocking requests have been cancelled for an unknown reason, cancelling request: %v", ti)
 			ticker.Stop()
-			return nil, fmt.Errorf("blocking request was cancelled for an unknown error, try request again")
+			return nil, ErrBlockingRequestCancelled
 		}
 	}
 }

@@ -1,6 +1,6 @@
 module github.com/aauren/rtorrent-exporter
 
-go 1.26.0
+go 1.26.6
 
 require (
 	github.com/aauren/rtorrent v0.4.0

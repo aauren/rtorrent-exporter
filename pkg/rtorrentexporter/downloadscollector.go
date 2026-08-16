@@ -1,6 +1,7 @@
 package rtorrentexporter
 
 import (
+	"errors"
 	"fmt"
 	"slices"
 	"time"
@@ -88,6 +89,10 @@ var (
 	hashOnlyCommand       = []string{cmdHash}
 	defaultActiveCommands = []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 )
+
+// ErrHashConversion is what a caller gets when rTorrent hands back something other than a string where an info hash was expected. It
+// escapes as far as PreWarmCaches, so it's worth being matchable
+var ErrHashConversion = errors.New("failed to convert torrent hash to string")
 
 // Verify that DownloadsCollector implements the prometheus.Collector interface.
 var _ prometheus.Collector = &DownloadsCollector{}
@@ -397,7 +402,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case cmdDownRate:
 			down, ok := v.(int64)
 			if !ok {
-				return errorMessage, fmt.Errorf("failed to convert Download Rate Bytes")
+				return errorMessage, errors.New("failed to convert Download Rate Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.DownloadRateBytes,
@@ -408,7 +413,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case cmdDownTotal:
 			downTotal, ok := v.(int64)
 			if !ok {
-				return errorMessage, fmt.Errorf("failed to convert Download Total Bytes")
+				return errorMessage, errors.New("failed to convert Download Total Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.DownloadTotalBytes,
@@ -419,7 +424,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case cmdUpRate:
 			up, ok := v.(int64)
 			if !ok {
-				return errorMessage, fmt.Errorf("failed to convert Upload Rate Bytes")
+				return errorMessage, errors.New("failed to convert Upload Rate Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.UploadRateBytes,
@@ -430,7 +435,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 		case cmdUpTotal:
 			upTotal, ok := v.(int64)
 			if !ok {
-				return errorMessage, fmt.Errorf("failed to convert Upload Total Bytes")
+				return errorMessage, errors.New("failed to convert Upload Total Bytes")
 			}
 			ch <- prometheus.MustNewConstMetric(
 				c.UploadTotalBytes,
@@ -446,7 +451,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 
 			msg, ok := v.(string)
 			if !ok {
-				return errorMessage, fmt.Errorf("failed to convert Download Message")
+				return errorMessage, errors.New("failed to convert Download Message")
 			}
 
 			// Excluding message Tried all trackers taken from rutorrent code base as a general exclusion for a tracker message that doesn't
@@ -481,7 +486,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]string, error) {
 	hash, ok := torSlice[0].(string)
 	if !ok {
-		return nil, fmt.Errorf("failed to convert torrent hash to string")
+		return nil, ErrHashConversion
 	}
 	name, ok := torSlice[1].(string)
 	if !ok {
@@ -526,14 +531,14 @@ func (c *DownloadsCollector) PreWarmCache() error {
 	// Find all of the hashes for the current downloads
 	allDownHashes, err := c.ds.DownloadWithDetails(hashOnlyCommand)
 	if err != nil {
-		return fmt.Errorf("encountered error getting download hashes: %v", err)
+		return fmt.Errorf("encountered error getting download hashes: %w", err)
 	}
 
 	for _, hash := range allDownHashes {
 		// Attempt to get the hash out of the slice
 		h, ok := hash[0].(string)
 		if !ok {
-			return fmt.Errorf("failed to convert hash to string")
+			return ErrHashConversion
 		}
 
 		// Send cache request

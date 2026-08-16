@@ -2,7 +2,9 @@ package cmd
 
 import (
 	"context"
+	"errors"
 	"flag"
+	"fmt"
 	nethttp "net/http"
 
 	//nolint:gosec // pprof still needs to be imported despite what gosec thinks
@@ -10,6 +12,7 @@ import (
 	"os"
 	"os/signal"
 	"regexp"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -35,7 +38,11 @@ var (
 		Short: "A Prometheus exporter for rTorrent",
 		Long: `A Prometheus exporter for rTorrent that collects metrics such as download and upload rates, total downloaded and uploaded
 		bytes, and tracker information.`,
-		Run: RunRoot,
+		RunE: RunRoot,
+		// main reports the error and picks the exit code, so we don't want cobra printing it again, nor dumping usage for what is almost
+		// always a runtime failure rather than a mistake at the command line
+		SilenceErrors: true,
+		SilenceUsage:  true,
 	}
 
 	rootConfig = &config.Config{}
@@ -151,10 +158,12 @@ func initConfig() {
 	}
 }
 
-func RunRoot(cmd *cobra.Command, args []string) {
+func RunRoot(cmd *cobra.Command, args []string) error {
 	// Validate arguments passed
 	klog.V(1).Info("validating flags")
-	validateFlags()
+	if err := validateFlags(); err != nil {
+		return err
+	}
 
 	// Enable pprof for advanced debugging early if requested
 	if rootConfig.Telemetry.EnablePProf {
@@ -167,18 +176,20 @@ func RunRoot(cmd *cobra.Command, args []string) {
 
 	if writeConfig {
 		klog.Info("writing configuration to file")
-		err := viper.SafeWriteConfig()
-		if err != nil {
-			klog.Fatalf("failed to write configuration to file: %v", err)
+		if err := viper.SafeWriteConfig(); err != nil {
+			return fmt.Errorf("failed to write configuration to file: %w", err)
 		}
 		klog.Infof("configuration written to file: %s", viper.ConfigFileUsed())
-		os.Exit(0)
+		return nil
 	}
 
 	// Setup context and wait group for graceful shutdown, the context cancels itself on SIGINT or SIGTERM
 	primaryCtx, masterCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
-	defer masterCancel()
 	primaryWG := &sync.WaitGroup{}
+	// Registered before the cancel so that it runs after it, which is what lets an early error return stop the children and then wait on
+	// them rather than abandoning them mid-flight
+	defer primaryWG.Wait()
+	defer masterCancel()
 
 	// Setup HTTP Client for rtorrent XMLRPC interaction over HTTP
 	hcOpts := &http.ClientOpts{
@@ -191,9 +202,9 @@ func RunRoot(cmd *cobra.Command, args []string) {
 
 	// Setup rtorrent client
 	klog.V(1).Info("creating rTorrent client")
-	c, err := rtorrent.New(rootConfig.Rtorrent.Addr, *rt)
+	c, err := rtorrent.New(rootConfig.Rtorrent.Addr, rt)
 	if err != nil {
-		klog.Fatalf("cannot create rTorrent client: %v", err)
+		return fmt.Errorf("cannot create rTorrent client: %w", err)
 	}
 
 	// If tracker collection is enabled, then setup the tracker cacher and run it
@@ -224,8 +235,14 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	}
 	mh := http.NewMetricHandler(mhOpts)
 	klog.Info("starting HTTP server for metrics")
+	// Written by the goroutine below and only read after primaryWG.Wait(), which is what makes that read safe
+	var metricsErr error
 	primaryWG.Go(func() {
-		mh.Run(primaryCtx)
+		if err := mh.Run(primaryCtx); err != nil {
+			metricsErr = err
+			// An exporter that can't serve metrics has nothing useful left to do, so take the rest of the process down with it
+			masterCancel()
+		}
 	})
 
 	// Setup download collector & pre-warm any caches that may exist
@@ -241,7 +258,7 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	err = rte.PreWarmCaches()
 	klog.Info("pre-warming caches for rTorrent exporter complete")
 	if err != nil {
-		klog.Fatalf("failed to pre-warm caches successfully: %v", err)
+		return fmt.Errorf("failed to pre-warm caches successfully: %w", err)
 	}
 	prometheus.MustRegister(rte)
 	klog.Info("rTorrent exporter metrics setup complete")
@@ -262,65 +279,83 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	<-primaryCtx.Done()
 	klog.Info("shutting down rTorrent exporter")
 	primaryWG.Wait()
+	if metricsErr != nil {
+		return metricsErr
+	}
 
 	klog.Info("rTorrent exporter shutdown successfully")
+	return nil
 }
 
-func validateFlags() {
+func validateFlags() error {
 	if rootConfig.Rtorrent.Addr == "" {
-		klog.Fatal("address of rTorrent XML-RPC server must be specified with '--rtorrent.addr' flag")
+		return errors.New("address of rTorrent XML-RPC server must be specified with '--rtorrent.addr' flag")
 	}
 	if rootConfig.Rtorrent.Timeout <= 0 {
-		klog.Fatal("timeout for rTorrent request must be greater than 0")
+		return errors.New("timeout for rTorrent request must be greater than 0")
 	}
 	if rootConfig.Telemetry.Timeout <= 0 {
-		klog.Fatal("timeout for telemetry request must be greater than 0")
+		return errors.New("timeout for telemetry request must be greater than 0")
+	}
+	// The metrics path ends up in a ServeMux method pattern, which panics at registration time on a malformed path, so we reject it here
+	// with a proper error instead
+	if !strings.HasPrefix(rootConfig.Telemetry.Path, "/") {
+		return errors.New("telemetry path must begin with '/', please check the '--telemetry.path' flag")
+	}
+	if strings.ContainsAny(rootConfig.Telemetry.Path, " \t{}") {
+		return errors.New("telemetry path must not contain whitespace or braces, please check the '--telemetry.path' flag")
 	}
 
 	// Validate telemetry settings
 	telemetryUserSet := rootConfig.Telemetry.Username != ""
 	telemetryPassSet := rootConfig.Telemetry.Password != ""
 	if telemetryUserSet != telemetryPassSet {
-		klog.Fatal("telemetry basic authentication requires both '--telemetry.username' and '--telemetry.password' to be set (or neither)")
+		return errors.New("telemetry basic authentication requires both '--telemetry.username' and '--telemetry.password' to be set " +
+			"(or neither)")
 	}
 
 	// Validate tracker settings
 	rtorrentUserSet := rootConfig.Rtorrent.Username != ""
 	rtorrentPassSet := rootConfig.Rtorrent.Password != ""
 	if rtorrentUserSet != rtorrentPassSet {
-		klog.Fatal("rTorrent basic authentication requires both '--rtorrent.username' and '--rtorrent.password' to be set (or neither)")
+		return errors.New("rTorrent basic authentication requires both '--rtorrent.username' and '--rtorrent.password' to be set " +
+			"(or neither)")
 	}
 
 	if rootConfig.Rtorrent.Trackers.Enabled && !rootConfig.Rtorrent.Downloads.Collect.Details {
-		klog.Fatal("collecting tracker information requires collecting download details, please either disable " +
+		return errors.New("collecting tracker information requires collecting download details, please either disable " +
 			"rtorrent.trackers.enabled or enable rtorrent.downloads.collect.details")
 	}
-	if rootConfig.Rtorrent.Trackers.Enabled {
-		if rootConfig.Rtorrent.Trackers.Cache.MinAge <= 0 {
-			klog.Fatal("minimum age of a cached tracker must be greater than 0")
-		}
-		if rootConfig.Rtorrent.Trackers.Cache.MaxAge <= 0 {
-			klog.Fatal("maximum age of a cached tracker must be greater than 0")
-		}
-		if rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests <= 0 {
-			klog.Fatal("maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker information " +
-				"must be greater than 0")
-		}
+	if !rootConfig.Rtorrent.Trackers.Enabled {
+		return nil
+	}
 
-		// Attempt to compile all regex matchers
-		for i := range rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions {
-			tns := &rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions[i]
-			if tns.ConvertTo == "" {
-				klog.Fatalf("tracker name substitution %v must have a 'convert-to' value", i)
+	if rootConfig.Rtorrent.Trackers.Cache.MinAge <= 0 {
+		return errors.New("minimum age of a cached tracker must be greater than 0")
+	}
+	if rootConfig.Rtorrent.Trackers.Cache.MaxAge <= 0 {
+		return errors.New("maximum age of a cached tracker must be greater than 0")
+	}
+	if rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests <= 0 {
+		return errors.New("maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker " +
+			"information must be greater than 0")
+	}
+
+	// Attempt to compile all regex matchers
+	for i := range rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions {
+		tns := &rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions[i]
+		if tns.ConvertTo == "" {
+			return fmt.Errorf("tracker name substitution %v must have a 'convert-to' value", i)
+		}
+		for _, m := range tns.Matchers {
+			r, err := regexp.Compile(m)
+			if err != nil {
+				return fmt.Errorf("failed to compile regexp for tracker (%s) name substitution %v (index %d): %w",
+					tns.ConvertTo, m, i, err)
 			}
-			for _, m := range tns.Matchers {
-				r, err := regexp.Compile(m)
-				if err != nil {
-					klog.Fatalf("failed to compile regexp for tracker (%s) name substitution %v (index %d): %v",
-						tns.ConvertTo, m, i, err)
-				}
-				tns.CompiledMathers = append(tns.CompiledMathers, r)
-			}
+			tns.CompiledMathers = append(tns.CompiledMathers, r)
 		}
 	}
+
+	return nil
 }

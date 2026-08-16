@@ -3,6 +3,7 @@
 package rtorrentexporter
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/aauren/rtorrent/rtorrent"
@@ -67,9 +68,9 @@ func (c *Exporter) Collect(ch chan<- prometheus.Metric) {
 
 // PreWarmCaches pre-warms caches for all collectors that have them.
 func (c *Exporter) PreWarmCaches() error {
-	for _, c := range c.collectors {
-		if err := c.PreWarmCache(); err != nil {
-			return err
+	for _, cc := range c.collectors {
+		if err := cc.PreWarmCache(); err != nil {
+			return fmt.Errorf("pre-warming cache for collector %T: %w", cc, err)
 		}
 	}
 	return nil

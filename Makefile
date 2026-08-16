@@ -5,7 +5,7 @@ DOCKER_BUILD_IMAGE?=golang:1.26.6
 # In GitHub actions where we make the official image, the runtime base is gcr.io/distroless/static to make a slim
 # container, however, here we use the full alpine image because the containers that come from the Makefile are presumed
 # to mostly be used for debugging and testing rather than distribution.
-RUNTIME_BASE?=alpine:3.23
+RUNTIME_BASE?=alpine:3.24
 
 # Other build / test variables
 NAME?=rtorrent-exporter

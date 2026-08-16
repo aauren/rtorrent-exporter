@@ -64,6 +64,15 @@ func (t *timeout) dialTimeout(ctx context.Context, network, addr string) (net.Co
 }
 
 func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	r.SetBasicAuth(rt.Username, rt.Password)
-	return rt.Transport.RoundTrip(r)
+	// Without a full set of credentials there's nothing to add, so we hand the request straight through rather than sending a partial or
+	// empty Basic header. The constructor only ever sets both or neither, but || is the defensive choice against direct struct construction
+	if rt.Username == "" || rt.Password == "" {
+		return rt.Transport.RoundTrip(r)
+	}
+
+	// RoundTrip isn't allowed to modify the request it was given, so we set the header on a clone
+	req := r.Clone(r.Context())
+	req.SetBasicAuth(rt.Username, rt.Password)
+
+	return rt.Transport.RoundTrip(req)
 }

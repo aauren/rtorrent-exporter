@@ -77,19 +77,19 @@ func NewFetcher(ts Source) *Fetcher {
 // helper function to avoid having to create a TrackerIndex object.
 func (f *Fetcher) GetTrackersByHashIndexAllFields(ctx context.Context, hash string, index int) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerWithIndex(hash, index)
-	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
+	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields())
 }
 
 // GetTrackersByHashAllFields retrieves all available fields for a tracker (identified by hash). This is implemented as a helper function to
 // avoid having to create a TrackerIndex object.
 func (f *Fetcher) GetTrackersByHashAllFields(ctx context.Context, hash string) ([]*rtorrent.Tracker, error) {
 	ti := rtorrent.NewTrackerNoIndex(hash)
-	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
+	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields())
 }
 
 // GetTrackersAllFields retrieves all available fields for a tracker (identified by hash and index).
 func (f *Fetcher) GetTrackersAllFields(ctx context.Context, ti *rtorrent.TrackerIndex) ([]*rtorrent.Tracker, error) {
-	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields)
+	return f.ts.TrackerWithDetails(ctx, ti, rtorrent.AllTrackerFields())
 }
 
 // GetTrackersByHashIndexSelectedFields retrieves the specified fields for a tracker (identified by hash and index). This is implemented as

@@ -5,7 +5,6 @@ import (
 	"crypto/subtle"
 	"errors"
 	"net/http"
-	"sync"
 	"time"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -44,11 +43,11 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 	// Create a new mux instead of the default mux
 	mux := http.NewServeMux()
 
-	// Optionally enable HTTP Basic authentication
-	mux.Handle(opts.MetricsPath, promhttp.Handler())
+	// Scraping is a read, so we register GET (which also covers HEAD) and let the mux answer anything else with a 405
+	mux.Handle("GET "+opts.MetricsPath, promhttp.Handler())
 	// Skip the redirect when metrics are already served from the root, because registering both on the same mux would panic
 	if opts.MetricsPath != "/" {
-		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {
 			http.Redirect(w, r, opts.MetricsPath, http.StatusMovedPermanently)
 		})
 	}
@@ -71,8 +70,7 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 	}
 }
 
-func (m *MetricHandler) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (m *MetricHandler) Run(ctx context.Context) {
 	klog.Infof("Starting HTTP server on %s", m.Server.Addr)
 
 	go func() {

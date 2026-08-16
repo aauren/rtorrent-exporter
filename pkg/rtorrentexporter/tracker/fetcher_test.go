@@ -144,8 +144,9 @@ func TestFetcher_Run(t *testing.T) {
 	inCH := make(chan *FetchRequest)
 	outCH := make(chan *TrackerResponse)
 
-	wg.Add(1)
-	go fetcher.Run(ctx, wg, inCH, outCH)
+	wg.Go(func() {
+		fetcher.Run(ctx, inCH, outCH)
+	})
 
 	t.Run("fetch all fields", func(t *testing.T) {
 		ti := &rtorrent.TrackerIndex{}

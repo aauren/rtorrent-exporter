@@ -4,8 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"math/rand"
-	"sort"
+	"math/rand/v2"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -91,8 +92,8 @@ func (ttci *TimedTrackerCacheInstance) IsStale(minAge time.Duration, maxAge time
 	}
 
 	// Generate a random duration between minAge and maxAge
-	//nolint:gosec // we don't care that we are using an insecure random number generator for this purpose
-	randomDuration := minAge + time.Duration(rand.Int63n(int64(maxAge-minAge)))
+	//nolint:gosec // G404 fires on math/rand/v2 as well, and jittering a cache refresh doesn't need a cryptographic source
+	randomDuration := minAge + rand.N(maxAge-minAge)
 
 	// Compare tr.FetchedAt against the current time minus the random duration
 	return time.Since(ttci.FetchedAt) > randomDuration
@@ -290,11 +291,12 @@ func trackerSliceEnsuringTrackerWithHashOnly(tr *TrackerResponse) []*rtorrent.Tr
 	}
 
 	// First ensure that Trackers slice inside TrackerResponse are sorted so that they are in a consistent order
-	sort.Sort(tr)
+	slices.SortFunc(tr.Trackers, func(a, b *rtorrent.Tracker) int {
+		return strings.Compare(a.TrackerIndex().String(), b.TrackerIndex().String())
+	})
 
 	// Take a copy of the trackers in the response as we don't want to append to the original list of Trackers inside the TrackerResponse
-	trackers := make([]*rtorrent.Tracker, len(tr.Trackers))
-	copy(trackers, tr.Trackers)
+	trackers := slices.Clone(tr.Trackers)
 
 	// Now get the first tracker and create a new tracker with the same hash but no index
 	firstTracker := trackers[0]
@@ -302,10 +304,10 @@ func trackerSliceEnsuringTrackerWithHashOnly(tr *TrackerResponse) []*rtorrent.Tr
 
 	// Check the existing list of Trackers in the response to ensure that a tracker with the same hash but no index doesn't already
 	// exist, if it does, then we don't need to add it again.
-	for _, t := range trackers {
-		if t.TrackerIndex().String() == firstTrackerNoIndex.TrackerIndex().String() {
-			return trackers
-		}
+	if slices.ContainsFunc(trackers, func(t *rtorrent.Tracker) bool {
+		return t.TrackerIndex().String() == firstTrackerNoIndex.TrackerIndex().String()
+	}) {
+		return trackers
 	}
 
 	// Add it to the list of trackers in the Tracker response
@@ -348,8 +350,7 @@ func (c *Cacher) cacheTrackersError(tr *TrackerResponse) {
 }
 
 // checkCacheForStaleItems checks the cache for stale items and sends a request to the fetcher to refresh the cache if the item is stale.
-func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
+func (c *Cacher) checkCacheForStaleItems(ctx context.Context) {
 	klog.V(2).Infof("checking cache for stale items")
 	c.cacheMu.RLock()
 	defer c.cacheMu.RUnlock()
@@ -398,16 +399,15 @@ func (c *Cacher) checkCacheCheckChan() {
 }
 
 // Run starts the cacher and runs the main loop for the cacher.
-func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
-	defer wg.Done()
-
+func (c *Cacher) Run(ctx context.Context) {
 	childWG := &sync.WaitGroup{}
 
 	// Setup fetchers up to the maximum number of allowed parallel requests
-	for i := 0; i < c.cOpts.MaxParallelRequests; i++ {
+	for range c.cOpts.MaxParallelRequests {
 		f := NewFetcher(c.f)
-		childWG.Add(1)
-		go f.Run(ctx, childWG, c.reqChan, c.resChan)
+		childWG.Go(func() {
+			f.Run(ctx, c.reqChan, c.resChan)
+		})
 	}
 
 	// Setup a timer to check cached items for staleness proactively
@@ -439,8 +439,9 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 		// If our ticker ticks, check cache for stale items proactively
 		case <-cacheCheckTicker.C:
 			klog.V(1).Infof("checking cache for stale items")
-			childWG.Add(1)
-			go c.checkCacheForStaleItems(ctx, childWG)
+			childWG.Go(func() {
+				c.checkCacheForStaleItems(ctx)
+			})
 		// Moderate our cacheCheckChan to see if we have any requests for new fetches, then check them against the cache, if they are not
 		// yet satisfied by cache, then send them on to the fetchers
 		case <-cacheCheckChanTicker.C:

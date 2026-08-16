@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/aauren/rtorrent/rtorrent"
@@ -44,23 +43,6 @@ func (tr *TrackerResponse) String() string {
 		fmt.Fprintf(&sb, "\nTrackerResponse: fetched at: <%s>, Value: <%s>", tr.FetchedAt, t)
 	}
 	return sb.String()
-}
-
-// Implement methods to make TrackerResponse sortable
-// Len is the number of elements in the collection.
-func (tr *TrackerResponse) Len() int {
-	return len(tr.Trackers)
-}
-
-// Less uses the string representation of TrackerIndex (which includes the info hash and an index if it exists) to compare two
-// TrackerResponse objects.
-func (tr *TrackerResponse) Less(i, j int) bool {
-	return tr.Trackers[i].TrackerIndex().String() < tr.Trackers[j].TrackerIndex().String()
-}
-
-// Swap swaps the elements with indexes i and j.
-func (tr *TrackerResponse) Swap(i, j int) {
-	tr.Trackers[i], tr.Trackers[j] = tr.Trackers[j], tr.Trackers[i]
 }
 
 // Fetcher is a construct that retrieves tracker information from a Source.
@@ -114,8 +96,7 @@ func (f *Fetcher) GetTrackersSelectedFields(ctx context.Context, ti *rtorrent.Tr
 	return f.ts.TrackerWithDetails(ctx, ti, fields)
 }
 
-func (f *Fetcher) Run(ctx context.Context, wg *sync.WaitGroup, inCH <-chan *FetchRequest, outCH chan<- *TrackerResponse) {
-	defer wg.Done()
+func (f *Fetcher) Run(ctx context.Context, inCH <-chan *FetchRequest, outCH chan<- *TrackerResponse) {
 	klog.Infof("starting tracker fetcher thread")
 
 	for {

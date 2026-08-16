@@ -3,3 +3,4 @@ rtorrent_exporter
 rtorrent-exporter
 .vscode
 dist
+/.codegraph

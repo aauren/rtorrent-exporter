@@ -139,7 +139,7 @@ func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *Modi
 		return nil
 	}
 
-	if ttci.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+	if ttci.IsStale(c.cOpts.MinAge, c.cOpts.MaxAge) {
 		klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)
 		fr := &FetchRequest{TrackerIndex: ti}
 		c.reqChan <- fr
@@ -343,7 +343,7 @@ func (c *Cacher) checkCacheForStaleItems(ctx context.Context, wg *sync.WaitGroup
 			return
 		default:
 		}
-		if tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+		if tr.IsStale(c.cOpts.MinAge, c.cOpts.MaxAge) {
 			klog.V(1).Infof("tracker was found in cache but is stale sending request to fetcher: %v", ti)
 			fr := &FetchRequest{TrackerIndex: &ti}
 			select {
@@ -362,7 +362,7 @@ func (c *Cacher) checkCacheCheckChan() {
 		select {
 		case fr := <-c.cacheCheckChan:
 			tr, ok, _ := c.getTrackerFromCacheOnly(fr.TrackerIndex)
-			if !ok || tr == nil || tr.IsStale(c.cOpts.MaxAge, c.cOpts.MinAge) {
+			if !ok || tr == nil || tr.IsStale(c.cOpts.MinAge, c.cOpts.MaxAge) {
 				select {
 				case c.reqChan <- fr:
 					klog.V(1).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)

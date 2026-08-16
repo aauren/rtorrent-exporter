@@ -4,3 +4,4 @@ rtorrent-exporter
 .vscode
 dist
 /.codegraph
+/.plans

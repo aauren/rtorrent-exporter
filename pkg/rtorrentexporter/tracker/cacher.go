@@ -135,6 +135,15 @@ func (c *Cacher) getTrackerFromCacheOnly(ti *rtorrent.TrackerIndex) (*TimedTrack
 	return nil, false, nil
 }
 
+// getBlockingReqCtx returns the current broadcast cancellation context. It takes the lock because cacheTrackersError swaps the context out
+// from under us whenever it has to bail out every in-flight blocking request at once.
+func (c *Cacher) getBlockingReqCtx() context.Context {
+	c.cacheMu.RLock()
+	defer c.cacheMu.RUnlock()
+
+	return c.blockingReqCtx
+}
+
 // GetTrackerFromCacheNonBlocking retrieves a tracker from the cache, if it doesn't exist, it will send a fetch request and return nil. In
 // the case of stale cached data, it will return stale data and send a fetch request.
 func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *ModifiedTracker {
@@ -176,7 +185,7 @@ func (c *Cacher) GetTrackerFromCacheBlocking(ctx context.Context, ti *rtorrent.T
 	klog.V(1).Infof("tracker was not found in cache, blocking until tracker is available: %v", ti)
 	// As of this moment take the pointer to the blocking request context, this will be used to cancel the blocking request in case of
 	// emergency, if needed.
-	blockingCancelCtx := c.blockingReqCtx
+	blockingCancelCtx := c.getBlockingReqCtx()
 
 	// If we're unable to get a non-blocking version of the tracker from the cache, then we need to block until we get a response added to
 	// the cache.

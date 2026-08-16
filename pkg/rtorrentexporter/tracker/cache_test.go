@@ -426,11 +426,12 @@ func TestCheckCacheForStaleItems(t *testing.T) {
 	c.trackerCache[ti] = ttci
 
 	wg := &sync.WaitGroup{}
-	wg.Add(1)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go c.checkCacheForStaleItems(ctx, wg)
+	wg.Go(func() {
+		c.checkCacheForStaleItems(ctx)
+	})
 
 	select {
 	case fr := <-c.reqChan:

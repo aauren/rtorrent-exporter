@@ -175,8 +175,9 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		os.Exit(0)
 	}
 
-	// Setup context and wait group for graceful shutdown
-	primaryCtx, masterCancel := context.WithCancel(context.Background())
+	// Setup context and wait group for graceful shutdown, the context cancels itself on SIGINT or SIGTERM
+	primaryCtx, masterCancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer masterCancel()
 	primaryWG := &sync.WaitGroup{}
 
 	// Setup HTTP Client for rtorrent XMLRPC interaction over HTTP
@@ -208,8 +209,9 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		})
 
 		klog.Info("starting tracker cacher")
-		primaryWG.Add(1)
-		go cacher.Run(primaryCtx, primaryWG)
+		primaryWG.Go(func() {
+			cacher.Run(primaryCtx)
+		})
 	}
 
 	// Setup HTTP server for metrics and run it
@@ -221,9 +223,10 @@ func RunRoot(cmd *cobra.Command, args []string) {
 		MetricsUser:    rootConfig.Telemetry.Username,
 	}
 	mh := http.NewMetricHandler(mhOpts)
-	primaryWG.Add(1)
 	klog.Info("starting HTTP server for metrics")
-	go mh.Run(primaryCtx, primaryWG)
+	primaryWG.Go(func() {
+		mh.Run(primaryCtx)
+	})
 
 	// Setup download collector & pre-warm any caches that may exist
 	klog.Info("setting up rTorrent exporter metrics")
@@ -255,14 +258,9 @@ func RunRoot(cmd *cobra.Command, args []string) {
 	)
 	klog.Info("rTorrent exporter started successfully")
 
-	// Handle SIGINT and SIGTERM
-	ch := make(chan os.Signal, 1)
-	signal.Notify(ch, syscall.SIGINT, syscall.SIGTERM)
-
 	// Wait for SIGINT or SIGTERM
-	<-ch
+	<-primaryCtx.Done()
 	klog.Info("shutting down rTorrent exporter")
-	masterCancel()
 	primaryWG.Wait()
 
 	klog.Info("rTorrent exporter shutdown successfully")

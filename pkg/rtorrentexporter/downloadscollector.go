@@ -2,6 +2,7 @@ package rtorrentexporter
 
 import (
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
@@ -211,7 +212,9 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 	}
 
 	if downCollector.collectOpts.DownloadMessages {
-		msgLabels := append(labels, "message")
+		// Concat rather than append, because append would write "message" into labels' spare capacity, which is shared with every
+		// other user of labels
+		msgLabels := slices.Concat(labels, []string{"message"})
 		downCollector.DownloadMessages = prometheus.NewDesc(
 			prometheus.BuildFQName(namespace, subsystem, "messages"),
 			"Tracker messages for downloads.",
@@ -458,7 +461,9 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 
 			// Only emit the actual message as a metric if the user has instructed us to do so
 			if c.collectOpts.DownloadMessages {
-				msgLabels := append(labels, msg)
+				// Same aliasing reason as in NewDownloadsCollector, labels is shared by every metric this loop emits, so the
+				// message label needs its own backing array
+				msgLabels := slices.Concat(labels, []string{msg})
 				ch <- prometheus.MustNewConstMetric(
 					c.DownloadMessages,
 					prometheus.GaugeValue,

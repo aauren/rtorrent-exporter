@@ -11,7 +11,9 @@ import (
 )
 
 const (
-	hash = "testhash"
+	hash       = "testhash"
+	testField1 = "field1"
+	testField2 = "field2"
 )
 
 // MockSource is a mock implementation of the Source interface.
@@ -82,7 +84,7 @@ func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
 	fetcher := NewFetcher(mockSource)
 	ctx := context.Background()
 	index := 1
-	fields := []rtorrent.TrackerField{"field1", "field2"}
+	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
 	mockSource.On("TrackerWithDetails", ctx, mock.Anything, fields).Return(expectedTrackers, nil)
@@ -100,7 +102,7 @@ func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := context.Background()
-	fields := []rtorrent.TrackerField{"field1", "field2"}
+	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
 	mockSource.On("TrackerWithDetails", ctx, mock.Anything, fields).Return(expectedTrackers, nil)
@@ -119,7 +121,7 @@ func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
 	fetcher := NewFetcher(mockSource)
 	ctx := context.Background()
 	ti := &rtorrent.TrackerIndex{}
-	fields := []rtorrent.TrackerField{"field1", "field2"}
+	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
 	mockSource.On("TrackerWithDetails", ctx, ti, fields).Return(expectedTrackers, nil)
@@ -160,7 +162,7 @@ func TestFetcher_Run(t *testing.T) {
 
 	t.Run("fetch selected fields", func(t *testing.T) {
 		ti := &rtorrent.TrackerIndex{}
-		fields := []rtorrent.TrackerField{"field1", "field2"}
+		fields := []rtorrent.TrackerField{testField1, testField2}
 		expectedTrackers := []*rtorrent.Tracker{{}}
 		mockSource.On("TrackerWithDetails", ctx, ti, fields).Return(expectedTrackers, nil)
 

@@ -31,7 +31,7 @@ func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
 	index := 1
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
-	mockSource.On("TrackerWithDetails", ctx, mock.Anything, rtorrent.AllTrackerFields).Return(expectedTrackers, nil)
+	mockSource.On("TrackerWithDetails", ctx, mock.Anything, rtorrent.AllTrackerFields()).Return(expectedTrackers, nil)
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashIndexAllFields(ctx, hash, index)
@@ -48,7 +48,7 @@ func TestFetcher_GetTrackersByHashAllFields(t *testing.T) {
 	ctx := context.Background()
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
-	mockSource.On("TrackerWithDetails", ctx, mock.Anything, rtorrent.AllTrackerFields).Return(expectedTrackers, nil)
+	mockSource.On("TrackerWithDetails", ctx, mock.Anything, rtorrent.AllTrackerFields()).Return(expectedTrackers, nil)
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashAllFields(ctx, hash)
@@ -66,7 +66,7 @@ func TestFetcher_GetTrackersAllFields(t *testing.T) {
 	ti := &rtorrent.TrackerIndex{}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
-	mockSource.On("TrackerWithDetails", ctx, ti, rtorrent.AllTrackerFields).Return(expectedTrackers, nil)
+	mockSource.On("TrackerWithDetails", ctx, ti, rtorrent.AllTrackerFields()).Return(expectedTrackers, nil)
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersAllFields(ctx, ti)
@@ -148,7 +148,7 @@ func TestFetcher_Run(t *testing.T) {
 	t.Run("fetch all fields", func(t *testing.T) {
 		ti := &rtorrent.TrackerIndex{}
 		expectedTrackers := []*rtorrent.Tracker{{}}
-		mockSource.On("TrackerWithDetails", ctx, ti, rtorrent.AllTrackerFields).Return(expectedTrackers, nil)
+		mockSource.On("TrackerWithDetails", ctx, ti, rtorrent.AllTrackerFields()).Return(expectedTrackers, nil)
 
 		inCH <- &FetchRequest{TrackerIndex: ti}
 		resp := <-outCH

@@ -45,9 +45,12 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 
 	// Optionally enable HTTP Basic authentication
 	mux.Handle(opts.MetricsPath, promhttp.Handler())
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.Redirect(w, r, opts.MetricsPath, http.StatusMovedPermanently)
-	})
+	// Skip the redirect when metrics are already served from the root, because registering both on the same mux would panic
+	if opts.MetricsPath != "/" {
+		mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, opts.MetricsPath, http.StatusMovedPermanently)
+		})
+	}
 
 	var hand http.Handler
 	hand = mux

@@ -8,6 +8,11 @@ import (
 	"github.com/stretchr/testify/mock"
 )
 
+const (
+	testHash = "hash1"
+	testName = "name1"
+)
+
 // MockDownloadsSource is a mock implementation of the DownloadsSource interface.
 type MockDownloadsSource struct {
 	mock.Mock
@@ -126,9 +131,9 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 
 func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 	ds := new(MockDownloadsSource)
-	cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total=", "d.message="}
+	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 	ds.On("DownloadWithDetails", cmds).Return([][]any{
-		{"hash1", "name1", int64(100), int64(200), int64(300), int64(400), nil},
+		{testHash, testName, int64(100), int64(200), int64(300), int64(400), nil},
 	}, nil)
 
 	collector := NewDownloadsCollector(ds, CollectorOpts{DownloadDetails: true})
@@ -149,8 +154,8 @@ func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
 	ch := make(chan prometheus.Metric)
-	a := []any{"hash1", "name1", int64(100), int64(200), int64(300), int64(400)}
-	cmds := []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total="}
+	a := []any{testHash, testName, int64(100), int64(200), int64(300), int64(400)}
+	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
 
 	go func() {
 		defer close(ch)
@@ -166,11 +171,11 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 
 func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
 	collector := NewDownloadsCollector(nil, CollectorOpts{})
-	torSlice := []any{"hash1", "name1"}
+	torSlice := []any{testHash, testName}
 
 	labels, err := collector.gatherDownloadDetailLabels(torSlice)
 	assert.Nil(t, err)
-	assert.Equal(t, []string{"hash1", "name1"}, labels)
+	assert.Equal(t, []string{testHash, testName}, labels)
 }
 
 func TestDownloadsCollector_getDownloadDetailCommands(t *testing.T) {

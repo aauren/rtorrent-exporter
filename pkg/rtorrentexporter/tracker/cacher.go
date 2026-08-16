@@ -27,6 +27,8 @@ const (
 	// The parallelRequestsBufferMultiplier is multiplied by the max parallel requests given by the user at runtime to determine the size of
 	// the request channel buffer. This is to ensure that we can handle a burst of requests without blocking the fetchers.
 	parallelRequestsBufferMultiplier = 10
+	// unknownDomain is the domain that we report for a tracker whenever we're unable to work out its real domain.
+	unknownDomain = "unknown"
 )
 
 // Cacher is a construct that caches the results of a Tracker Fetcher for a specified min / max time and according to a set number of
@@ -202,7 +204,7 @@ func (c *Cacher) parseModifiedTracker(t *rtorrent.Tracker) *ModifiedTracker {
 	// Start off by creating the modified tracker with an embedded tracker instance and an unknown domain
 	mt := &ModifiedTracker{
 		Tracker:           t,
-		SubstitutedDomain: "unknown",
+		SubstitutedDomain: unknownDomain,
 	}
 
 	// Attempt to get the Domain from the tracker, any errors cause mt to be returned as is

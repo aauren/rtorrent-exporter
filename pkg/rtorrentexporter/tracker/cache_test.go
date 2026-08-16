@@ -305,7 +305,7 @@ func TestCacheTrackers(t *testing.T) {
 		tracker = tracker.CloneWithTrackerIndex(ti)
 		mt := &ModifiedTracker{
 			Tracker:           tracker,
-			SubstitutedDomain: "unknown",
+			SubstitutedDomain: unknownDomain,
 		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker},
@@ -330,19 +330,19 @@ func TestCacheTrackers(t *testing.T) {
 		tracker1 = tracker1.CloneWithTrackerIndex(ti1)
 		mt1 := &ModifiedTracker{
 			Tracker:           tracker1,
-			SubstitutedDomain: "unknown",
+			SubstitutedDomain: unknownDomain,
 		}
 		tracker2 := &rtorrent.Tracker{}
 		tracker2 = tracker2.CloneWithTrackerIndex(ti2)
 		mt2 := &ModifiedTracker{
 			Tracker:           tracker2,
-			SubstitutedDomain: "unknown",
+			SubstitutedDomain: unknownDomain,
 		}
 		ti1HashOnly := rtorrent.NewTrackerNoIndex(ti1.InfoHash)
 		tracker1HashOnly := tracker1.CloneWithTrackerIndex(ti1HashOnly)
 		mt1HashOnly := &ModifiedTracker{
 			Tracker:           tracker1HashOnly,
-			SubstitutedDomain: "unknown",
+			SubstitutedDomain: unknownDomain,
 		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker1, tracker2},

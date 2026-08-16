@@ -72,10 +72,20 @@ type CollectorOpts struct {
 	TC                 *tracker.Cacher
 }
 
+// The rTorrent XML-RPC commands that we send when asking for download details
+const (
+	cmdHash         = "d.hash="
+	cmdBaseFilename = "d.base_filename="
+	cmdDownRate     = "d.down.rate="
+	cmdDownTotal    = "d.down.total="
+	cmdUpRate       = "d.up.rate="
+	cmdUpTotal      = "d.up.total="
+	cmdMessage      = "d.message="
+)
+
 var (
-	hashOnlyCommand       = []string{"d.hash="}
-	defaultActiveCommands = []string{"d.hash=", "d.base_filename=", "d.down.rate=", "d.down.total=", "d.up.rate=", "d.up.total=",
-		"d.message="}
+	hashOnlyCommand       = []string{cmdHash}
+	defaultActiveCommands = []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 )
 
 // Verify that DownloadsCollector implements the prometheus.Collector interface.
@@ -381,7 +391,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 
 	for idx, v := range abbrA {
 		switch abbrCommands[idx] {
-		case "d.down.rate=":
+		case cmdDownRate:
 			down, ok := v.(int64)
 			if !ok {
 				return errorMessage, fmt.Errorf("failed to convert Download Rate Bytes")
@@ -392,7 +402,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 				float64(down),
 				labels...,
 			)
-		case "d.down.total=":
+		case cmdDownTotal:
 			downTotal, ok := v.(int64)
 			if !ok {
 				return errorMessage, fmt.Errorf("failed to convert Download Total Bytes")
@@ -403,7 +413,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 				float64(downTotal),
 				labels...,
 			)
-		case "d.up.rate=":
+		case cmdUpRate:
 			up, ok := v.(int64)
 			if !ok {
 				return errorMessage, fmt.Errorf("failed to convert Upload Rate Bytes")
@@ -414,7 +424,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 				float64(up),
 				labels...,
 			)
-		case "d.up.total=":
+		case cmdUpTotal:
 			upTotal, ok := v.(int64)
 			if !ok {
 				return errorMessage, fmt.Errorf("failed to convert Upload Total Bytes")
@@ -425,7 +435,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 				float64(upTotal),
 				labels...,
 			)
-		case "d.message=":
+		case cmdMessage:
 			// If there are no messages, then just continue
 			if v == nil {
 				continue

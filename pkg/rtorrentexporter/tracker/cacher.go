@@ -98,14 +98,22 @@ func (ttci *TimedTrackerCacheInstance) IsStale(minAge time.Duration, maxAge time
 	return time.Since(ttci.FetchedAt) > randomDuration
 }
 
-// NewCacher creates a new Cacher with the specified Fetcher and CacheOpts.
+// NewCacher creates a new Cacher with the specified Fetcher and CacheOpts. Everything a caller can touch is built here rather than in Run,
+// so that a Cacher is fully usable the moment you have one. Otherwise a pre-warm or a scrape that lands before the scheduler gets around to
+// running Run would send on a nil channel and block forever.
 func NewCacher(f Source, opts CacheOpts) *Cacher {
-	return &Cacher{
+	c := &Cacher{
 		f:                 f,
 		cOpts:             opts,
+		reqChan:           make(chan *FetchRequest, opts.MaxParallelRequests*parallelRequestsBufferMultiplier),
+		cacheCheckChan:    make(chan *FetchRequest, maxCacheCheckChanBuffer),
+		resChan:           make(chan *TrackerResponse, opts.MaxParallelRequests*parallelRequestsBufferMultiplier),
 		trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 		trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
 	}
+	c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
+
+	return c
 }
 
 // getTrackerFromCacheOnly retrieves a tracker from the cache without sending a fetch request if the item doesn't exist, this is meant to be
@@ -385,10 +393,6 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 	defer wg.Done()
 
 	childWG := &sync.WaitGroup{}
-	c.cacheCheckChan = make(chan *FetchRequest, maxCacheCheckChanBuffer)
-	c.reqChan = make(chan *FetchRequest, c.cOpts.MaxParallelRequests*parallelRequestsBufferMultiplier)
-	c.resChan = make(chan *TrackerResponse, c.cOpts.MaxParallelRequests*parallelRequestsBufferMultiplier)
-	c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
 
 	// Setup fetchers up to the maximum number of allowed parallel requests
 	for i := 0; i < c.cOpts.MaxParallelRequests; i++ {

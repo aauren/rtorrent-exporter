@@ -412,19 +412,20 @@ func (c *Cacher) Run(ctx context.Context, wg *sync.WaitGroup) {
 
 	// Setup a timer to check cached items for staleness proactively
 	cacheCheckTicker := time.NewTicker(c.cOpts.MinAge)
+	defer cacheCheckTicker.Stop()
 	cacheCheckChanTicker := time.NewTicker(internalCacheCheckInterval)
+	defer cacheCheckChanTicker.Stop()
 
 	// Setup cacher loop
 	for {
 		select {
-		// If we're all done here, then close out our channels and return
+		// If we're all done here, then wait for our children and return
 		case <-ctx.Done():
 			klog.Info("cacher has been asked to stop, stopping...")
-			// Close all fetchers
-			close(c.reqChan)
-			// Wait for all fetchers to finish
+			// We deliberately don't close reqChan or resChan here. Cancelling the context is what stops the fetchers, and in-flight
+			// stale checks or a concurrent scrape coming through GetTrackerFromCacheNonBlocking can still send on reqChan, which
+			// would panic on a closed channel.
 			childWG.Wait()
-			close(c.resChan)
 			klog.Info("cacher has stopped")
 			return
 		// If we have a response from the fetcher, then check for errors and cache it if appropriate

@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/subtle"
+	"errors"
 	"net/http"
 	"sync"
 	"time"
@@ -75,7 +76,9 @@ func (m *MetricHandler) Run(ctx context.Context, wg *sync.WaitGroup) {
 	klog.Infof("Starting HTTP server on %s", m.Server.Addr)
 
 	go func() {
-		if err := m.Server.ListenAndServe(); err != nil {
+		// ListenAndServe always returns ErrServerClosed once Shutdown has been called, so we can't treat that as fatal or an orderly
+		// termination races us into killing the process before Run gets a chance to return
+		if err := m.Server.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			klog.Fatalf("HTTP server error: %v", err)
 		}
 	}()

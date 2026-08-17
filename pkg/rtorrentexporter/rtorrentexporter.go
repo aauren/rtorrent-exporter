@@ -15,7 +15,7 @@ const (
 	namespace = "rtorrent"
 )
 
-// CollectorOpts contains options for creating prometheus collectors that may need be attached to caches that can be pre-warmed.
+// CachingCollector is a prometheus.Collector that may be sitting in front of a cache which wants filling before the first scrape arrives.
 type CachingCollector interface {
 	prometheus.Collector
 	// PreWarmCache pre-warms the cache for the collector. If a collector does not have a cache to pre-warm it is expected to be a no-op.

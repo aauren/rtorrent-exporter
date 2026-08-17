@@ -43,9 +43,9 @@ type TrackersConfig struct {
 
 // TrackerNameSubstitutions is a configuration for converting tracker names that match various regex expressions to a new name.
 type TrackerNameSubstitutions struct {
-	ConvertTo       string           `mapstructure:"convert-to"`
-	Matchers        []string         `mapstructure:"matchers"`
-	CompiledMathers []*regexp.Regexp `mapstructure:"-"`
+	ConvertTo        string           `mapstructure:"convert-to"`
+	Matchers         []string         `mapstructure:"matchers"`
+	CompiledMatchers []*regexp.Regexp `mapstructure:"-"`
 }
 
 // CacheConfig is the configuration for controlling how we cache tracker information for emitting metrics

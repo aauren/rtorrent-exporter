@@ -251,7 +251,7 @@ func (c *Cacher) parseModifiedTracker(t *rtorrent.Tracker) *ModifiedTracker {
 	}
 
 	for _, sub := range c.cOpts.TrackerNameSubstitutions {
-		for _, matcher := range sub.CompiledMathers {
+		for _, matcher := range sub.CompiledMatchers {
 			if matcher.MatchString(mt.SubstitutedDomain) {
 				mt.SubstitutedDomain = sub.ConvertTo
 				return mt

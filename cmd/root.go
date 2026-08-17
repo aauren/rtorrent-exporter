@@ -6,9 +6,7 @@ import (
 	"flag"
 	"fmt"
 	nethttp "net/http"
-
-	//nolint:gosec // pprof still needs to be imported despite what gosec thinks
-	_ "net/http/pprof"
+	"net/http/pprof"
 	"os"
 	"os/signal"
 	"regexp"
@@ -26,6 +24,13 @@ import (
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 	"k8s.io/klog/v2"
+)
+
+const (
+	// We bind every interface rather than localhost, because this is most often run inside a container where a localhost-only listener
+	// would be unreachable through the port mapping
+	pprofAddr              = "0.0.0.0:6060"
+	pprofReadHeaderTimeout = 10 * time.Second
 )
 
 var (
@@ -167,11 +172,7 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 
 	// Enable pprof for advanced debugging early if requested
 	if rootConfig.Telemetry.EnablePProf {
-		go func() {
-			klog.Infof("starting pprof server on %q", "localhost:6060")
-			//nolint:gosec // pprof is a debugging tool we don't care about timeouts
-			klog.Info(nethttp.ListenAndServe("0.0.0.0:6060", nil))
-		}()
+		startPProfServer()
 	}
 
 	if writeConfig {
@@ -287,6 +288,28 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 	return nil
 }
 
+// startPProfServer serves the pprof handlers on a mux of its own, so that we're not also exposing whatever else happens to have found its
+// way onto DefaultServeMux. It never returns an error to the caller, because failing to start a debugging aid shouldn't stop the exporter.
+func startPProfServer() {
+	mux := nethttp.NewServeMux()
+	mux.HandleFunc("/debug/pprof/", pprof.Index)
+	mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
+	server := &nethttp.Server{
+		Addr:              pprofAddr,
+		Handler:           mux,
+		ReadHeaderTimeout: pprofReadHeaderTimeout,
+	}
+
+	go func() {
+		klog.Infof("starting pprof server on %q", pprofAddr)
+		klog.Info(server.ListenAndServe())
+	}()
+}
+
 func validateFlags() error {
 	if rootConfig.Rtorrent.Addr == "" {
 		return errors.New("address of rTorrent XML-RPC server must be specified with '--rtorrent.addr' flag")
@@ -353,7 +376,7 @@ func validateFlags() error {
 				return fmt.Errorf("failed to compile regexp for tracker (%s) name substitution %v (index %d): %w",
 					tns.ConvertTo, m, i, err)
 			}
-			tns.CompiledMathers = append(tns.CompiledMathers, r)
+			tns.CompiledMatchers = append(tns.CompiledMatchers, r)
 		}
 	}
 

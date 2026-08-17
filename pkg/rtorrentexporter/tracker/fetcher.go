@@ -50,7 +50,7 @@ type Fetcher struct {
 	ts Source
 }
 
-// NewFethcer creates a new Fetcher with the specified Source.
+// NewFetcher creates a new Fetcher with the specified Source.
 func NewFetcher(ts Source) *Fetcher {
 	return &Fetcher{ts: ts}
 }
@@ -105,17 +105,21 @@ func (f *Fetcher) Run(ctx context.Context, inCH <-chan *FetchRequest, outCH chan
 			klog.Infof("stopping tracker fetcher thread")
 			return
 		case req := <-inCH:
-			// If fields are specified, then use them when making the request
-			if len(req.Fields) > 0 {
-				resp, err := f.GetTrackersSelectedFields(ctx, req.TrackerIndex, req.Fields)
-				TrackerResponse := &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}
-				outCH <- TrackerResponse
-				continue
+			// A request that names no fields is asking for all of them
+			fields := req.Fields
+			if len(fields) == 0 {
+				fields = rtorrent.AllTrackerFields()
 			}
-			// If no fields are specified, then retrieve all fields
-			resp, err := f.GetTrackersAllFields(ctx, req.TrackerIndex)
-			TrackerResponse := &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}
-			outCH <- TrackerResponse
+
+			resp, err := f.GetTrackersSelectedFields(ctx, req.TrackerIndex, fields)
+			// Guard the send with the context, because the cacher stops draining outCH once it's cancelled, and a bare send on a
+			// full buffer would then hang this goroutine and stall shutdown forever
+			select {
+			case outCH <- &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}:
+			case <-ctx.Done():
+				klog.Infof("stopping tracker fetcher thread")
+				return
+			}
 		}
 	}
 }

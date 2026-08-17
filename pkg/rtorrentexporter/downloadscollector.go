@@ -60,6 +60,10 @@ type DownloadsCollector struct {
 	// Download messages, these are the messages that come from the tracker
 	DownloadMessages *prometheus.Desc
 
+	// detailDescs maps each download detail command that carries a plain int64 counter to the metric it feeds, so that parsing a
+	// download's details is a lookup rather than a case per command. cmdMessage is deliberately absent because it needs real handling.
+	detailDescs map[string]*prometheus.Desc
+
 	// DownloadsSource is the source from which we get the downloads, this is typically provided by a facade or the rtorrent library
 	ds DownloadsSource
 
@@ -214,6 +218,13 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 			nil,
 			nil,
 		)
+
+		downCollector.detailDescs = map[string]*prometheus.Desc{
+			cmdDownRate:  downCollector.DownloadRateBytes,
+			cmdDownTotal: downCollector.DownloadTotalBytes,
+			cmdUpRate:    downCollector.UploadRateBytes,
+			cmdUpTotal:   downCollector.UploadTotalBytes,
+		}
 	}
 
 	if downCollector.collectOpts.DownloadMessages {
@@ -253,93 +264,35 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 
 // collectDownloadCounts collects metrics which track number of downloads in various possible states.
 func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) (*prometheus.Desc, error) {
-	started, err := c.ds.Started()
-	if err != nil {
-		return c.DownloadsStarted, err
+	// Every one of these is a separate rTorrent view whose only interesting property is how many entries came back
+	views := []struct {
+		desc  *prometheus.Desc
+		fetch func() ([]string, error)
+	}{
+		{c.DownloadsStarted, c.ds.Started},
+		{c.DownloadsStopped, c.ds.Stopped},
+		{c.DownloadsComplete, c.ds.Complete},
+		{c.DownloadsIncomplete, c.ds.Incomplete},
+		{c.DownloadsHashing, c.ds.Hashing},
+		{c.DownloadsSeeding, c.ds.Seeding},
+		{c.DownloadsLeeching, c.ds.Leeching},
+		{c.DownloadsActive, c.ds.Active},
 	}
 
-	stopped, err := c.ds.Stopped()
-	if err != nil {
-		return c.DownloadsStopped, err
+	// We gather every count before emitting any of them so that a failure part way through doesn't leave the scrape holding a
+	// half-populated set
+	counts := make([]float64, len(views))
+	for i, v := range views {
+		entries, err := v.fetch()
+		if err != nil {
+			return v.desc, err
+		}
+		counts[i] = float64(len(entries))
 	}
 
-	complete, err := c.ds.Complete()
-	if err != nil {
-		return c.DownloadsComplete, err
+	for i, v := range views {
+		ch <- prometheus.MustNewConstMetric(v.desc, prometheus.GaugeValue, counts[i])
 	}
-
-	incomplete, err := c.ds.Incomplete()
-	if err != nil {
-		return c.DownloadsIncomplete, err
-	}
-
-	hashing, err := c.ds.Hashing()
-	if err != nil {
-		return c.DownloadsHashing, err
-	}
-
-	seeding, err := c.ds.Seeding()
-	if err != nil {
-		return c.DownloadsSeeding, err
-	}
-
-	leeching, err := c.ds.Leeching()
-	if err != nil {
-		return c.DownloadsLeeching, err
-	}
-
-	active, err := c.ds.Active()
-	if err != nil {
-		return c.DownloadsActive, err
-	}
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsStarted,
-		prometheus.GaugeValue,
-		float64(len(started)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsStopped,
-		prometheus.GaugeValue,
-		float64(len(stopped)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsComplete,
-		prometheus.GaugeValue,
-		float64(len(complete)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsIncomplete,
-		prometheus.GaugeValue,
-		float64(len(incomplete)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsHashing,
-		prometheus.GaugeValue,
-		float64(len(hashing)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsSeeding,
-		prometheus.GaugeValue,
-		float64(len(seeding)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsLeeching,
-		prometheus.GaugeValue,
-		float64(len(leeching)),
-	)
-
-	ch <- prometheus.MustNewConstMetric(
-		c.DownloadsActive,
-		prometheus.GaugeValue,
-		float64(len(active)),
-	)
 
 	return nil, nil
 }
@@ -398,51 +351,7 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 	errorMessage := false
 
 	for idx, v := range abbrA {
-		switch abbrCommands[idx] {
-		case cmdDownRate:
-			down, ok := v.(int64)
-			if !ok {
-				return errorMessage, errors.New("failed to convert Download Rate Bytes")
-			}
-			ch <- prometheus.MustNewConstMetric(
-				c.DownloadRateBytes,
-				prometheus.GaugeValue,
-				float64(down),
-				labels...,
-			)
-		case cmdDownTotal:
-			downTotal, ok := v.(int64)
-			if !ok {
-				return errorMessage, errors.New("failed to convert Download Total Bytes")
-			}
-			ch <- prometheus.MustNewConstMetric(
-				c.DownloadTotalBytes,
-				prometheus.GaugeValue,
-				float64(downTotal),
-				labels...,
-			)
-		case cmdUpRate:
-			up, ok := v.(int64)
-			if !ok {
-				return errorMessage, errors.New("failed to convert Upload Rate Bytes")
-			}
-			ch <- prometheus.MustNewConstMetric(
-				c.UploadRateBytes,
-				prometheus.GaugeValue,
-				float64(up),
-				labels...,
-			)
-		case cmdUpTotal:
-			upTotal, ok := v.(int64)
-			if !ok {
-				return errorMessage, errors.New("failed to convert Upload Total Bytes")
-			}
-			ch <- prometheus.MustNewConstMetric(
-				c.UploadTotalBytes,
-				prometheus.GaugeValue,
-				float64(upTotal),
-				labels...,
-			)
+		switch cmd := abbrCommands[idx]; cmd {
 		case cmdMessage:
 			// If there are no messages, then just continue
 			if v == nil {
@@ -476,6 +385,24 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 					msgLabels...,
 				)
 			}
+		default:
+			// Anything else is a plain int64 counter, and the only thing that varies is which metric it lands on. A command we
+			// have no metric for isn't an error, it just means we asked rTorrent for something we don't export.
+			desc, ok := c.detailDescs[cmd]
+			if !ok {
+				continue
+			}
+
+			count, ok := v.(int64)
+			if !ok {
+				return errorMessage, fmt.Errorf("failed to convert the value of %s to an int64", cmd)
+			}
+			ch <- prometheus.MustNewConstMetric(
+				desc,
+				prometheus.GaugeValue,
+				float64(count),
+				labels...,
+			)
 		}
 	}
 

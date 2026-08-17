@@ -56,8 +56,7 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 		})
 	}
 
-	var hand http.Handler
-	hand = mux
+	hand := http.Handler(mux)
 	if opts.MetricsUser != "" && opts.MetricsPass != "" {
 		hand = basicAuth(mux, opts.MetricsUser, opts.MetricsPass)
 	}

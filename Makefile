@@ -111,6 +111,8 @@ else
 	@echo Finished rtorrent-exporter linting
 endif
 
+# The race detector is implemented in cgo, which is why the tests run with CGO_ENABLED=1 while everything we actually ship stays at 0. A
+# race is a bug like any other, so there's no reason to make catching one opt in.
 test: gofmt ## Runs code quality pipelines (gofmt, tests, coverage, etc)
 ifeq "$(BUILD_IN_DOCKER)" "true"
 	@echo Starting rtorrent-exporter unit tests in Docker
@@ -119,11 +121,11 @@ ifeq "$(BUILD_IN_DOCKER)" "true"
 		-v $(GO_MOD_CACHE):/go/pkg/mod \
 		-w /go/src/github.com/aauren/rtorrent-exporter $(DOCKER_BUILD_IMAGE) \
 		sh -c \
-		'CGO_ENABLED=0 go test -v $(GO_TEST_FLAGS) -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...'
+		'CGO_ENABLED=1 go test -v -race $(GO_TEST_FLAGS) -timeout 60s github.com/aauren/rtorrent-exporter/pkg/...'
 	@echo Finished rtorrent-exporter unit tests in Docker
 else
 	@echo Starting rtorrent-exporter unit tests
-	CGO_ENABLED=0 go test -v $(GO_TEST_FLAGS) -timeout 30s github.com/aauren/rtorrent-exporter/pkg/...
+	CGO_ENABLED=1 go test -v -race $(GO_TEST_FLAGS) -timeout 60s github.com/aauren/rtorrent-exporter/pkg/...
 	@echo Finished rtorrent-exporter unit tests
 endif
 

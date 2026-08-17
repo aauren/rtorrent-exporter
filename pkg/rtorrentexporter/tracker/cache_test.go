@@ -5,10 +5,12 @@ import (
 	"errors"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestTimedTrackerCacheInstance_IsStale(t *testing.T) {
@@ -53,7 +55,7 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		c.trackerCache[ti] = ttci
 
 		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.True(t, ok)
 		assert.Equal(t, ttci, result)
 	})
@@ -68,10 +70,9 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		c.trackerRespErrors[ti] = rtorrent.ErrBadData
 
 		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		assert.Error(t, err)
+		require.ErrorIs(t, err, rtorrent.ErrBadData)
 		assert.False(t, ok)
 		assert.Nil(t, result)
-		assert.Equal(t, rtorrent.ErrBadData, err)
 	})
 
 	t.Run("tracker not found in cache, no error", func(t *testing.T) {
@@ -83,7 +84,7 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 
 		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.False(t, ok)
 		assert.Nil(t, result)
 	})
@@ -191,7 +192,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 				MaxAge: 10 * time.Minute,
 				MinAge: 5 * time.Minute,
 			},
-			blockingReqCtx: context.Background(),
+			blockingReqCtx: t.Context(),
 		}
 
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
@@ -204,42 +205,46 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		}
 		c.trackerCache[ti] = ttci
 
-		result, err := c.GetTrackerFromCacheBlocking(context.Background(), &ti)
-		assert.NoError(t, err)
+		result, err := c.GetTrackerFromCacheBlocking(t.Context(), &ti)
+		require.NoError(t, err)
 		assert.Equal(t, mt, result)
 	})
 
+	// This one runs inside a synctest bubble, so the sleep below and the cacher's own poll interval both run against a fake clock. The
+	// test finishes as fast as the scheduler allows and can't flake on a loaded machine.
 	t.Run("tracker not found in cache", func(t *testing.T) {
-		c := &Cacher{
-			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
-			cacheCheckChan:    make(chan *FetchRequest, 1),
-			reqChan:           make(chan *FetchRequest, 1),
-			cOpts: CacheOpts{
-				MaxAge: 10 * time.Minute,
-				MinAge: 5 * time.Minute,
-			},
-			blockingReqCtx: context.Background(),
-		}
-
-		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
-
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			tracker := &rtorrent.Tracker{}
-			tracker = tracker.CloneWithTrackerIndex(&ti)
-			mt := &ModifiedTracker{Tracker: tracker}
-			ttci := &TimedTrackerCacheInstance{
-				Tracker:   mt,
-				FetchedAt: time.Now(),
+		synctest.Test(t, func(t *testing.T) {
+			c := &Cacher{
+				trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+				trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+				cacheCheckChan:    make(chan *FetchRequest, 1),
+				reqChan:           make(chan *FetchRequest, 1),
+				cOpts: CacheOpts{
+					MaxAge: 10 * time.Minute,
+					MinAge: 5 * time.Minute,
+				},
+				blockingReqCtx: t.Context(),
 			}
-			c.trackerCache[ti] = ttci
-		}()
 
-		result, err := c.GetTrackerFromCacheBlocking(context.Background(), &ti)
-		assert.NoError(t, err)
-		assert.NotNil(t, result)
-		assert.Equal(t, &ti, result.Tracker.TrackerIndex())
+			ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				tracker := &rtorrent.Tracker{}
+				tracker = tracker.CloneWithTrackerIndex(&ti)
+				// We go through cacheTrackers rather than writing the map directly, because that's how a fetcher response lands in
+				// the cache, and it's what puts the write under cacheMu where the blocked reader can safely see it
+				c.cacheTrackers(&TrackerResponse{
+					Trackers:  []*rtorrent.Tracker{tracker},
+					FetchedAt: time.Now(),
+				})
+			}()
+
+			result, err := c.GetTrackerFromCacheBlocking(t.Context(), &ti)
+			require.NoError(t, err)
+			require.NotNil(t, result)
+			assert.Equal(t, &ti, result.Tracker.TrackerIndex())
+		})
 	})
 
 	t.Run("tracker not found in cache, context canceled", func(t *testing.T) {
@@ -252,44 +257,46 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 				MaxAge: 10 * time.Minute,
 				MinAge: 5 * time.Minute,
 			},
-			blockingReqCtx: context.Background(),
+			blockingReqCtx: t.Context(),
 		}
 
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 
-		ctx, cancel := context.WithCancel(context.Background())
+		ctx, cancel := context.WithCancel(t.Context())
 		cancel()
 
 		result, err := c.GetTrackerFromCacheBlocking(ctx, &ti)
-		assert.Error(t, err)
+		require.ErrorIs(t, err, context.Canceled)
 		assert.Nil(t, result)
 	})
 
 	t.Run("tracker not found in cache, blockingCancelCtx canceled", func(t *testing.T) {
-		c := &Cacher{
-			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
-			cacheCheckChan:    make(chan *FetchRequest, 1),
-			reqChan:           make(chan *FetchRequest, 1),
-			cOpts: CacheOpts{
-				MaxAge: 10 * time.Minute,
-				MinAge: 5 * time.Minute,
-			},
-		}
+		synctest.Test(t, func(t *testing.T) {
+			c := &Cacher{
+				trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+				trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+				cacheCheckChan:    make(chan *FetchRequest, 1),
+				reqChan:           make(chan *FetchRequest, 1),
+				cOpts: CacheOpts{
+					MaxAge: 10 * time.Minute,
+					MinAge: 5 * time.Minute,
+				},
+			}
 
-		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+			ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 
-		// Create a context with cancel function for blockingReqCtx
-		c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
+			// Create a context with cancel function for blockingReqCtx
+			c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(t.Context())
 
-		go func() {
-			time.Sleep(100 * time.Millisecond)
-			c.blockingReqCancel()
-		}()
+			go func() {
+				time.Sleep(100 * time.Millisecond)
+				c.blockingReqCancel()
+			}()
 
-		result, err := c.GetTrackerFromCacheBlocking(context.Background(), &ti)
-		assert.Error(t, err)
-		assert.Nil(t, result)
+			result, err := c.GetTrackerFromCacheBlocking(t.Context(), &ti)
+			require.ErrorIs(t, err, ErrBlockingRequestCancelled)
+			assert.Nil(t, result)
+		})
 	})
 }
 
@@ -314,6 +321,7 @@ func TestCacheTrackers(t *testing.T) {
 
 		c.cacheTrackers(tr)
 
+		require.Contains(t, c.trackerCache, *ti)
 		assert.Equal(t, mt, c.trackerCache[*ti].Tracker)
 		assert.Empty(t, c.trackerRespErrors)
 	})
@@ -351,6 +359,9 @@ func TestCacheTrackers(t *testing.T) {
 
 		c.cacheTrackers(tr)
 
+		require.Contains(t, c.trackerCache, *ti1)
+		require.Contains(t, c.trackerCache, *ti2)
+		require.Contains(t, c.trackerCache, *ti1HashOnly)
 		assert.Equal(t, mt1, c.trackerCache[*ti1].Tracker)
 		assert.Equal(t, mt2, c.trackerCache[*ti2].Tracker)
 		assert.Equal(t, mt1HashOnly, c.trackerCache[*ti1HashOnly].Tracker)
@@ -360,7 +371,7 @@ func TestCacheTrackers(t *testing.T) {
 
 func TestCacheTrackersError(t *testing.T) {
 	t.Run("nil tracker", func(t *testing.T) {
-		ctx, cancelFunc := context.WithCancel(context.Background())
+		ctx, cancelFunc := context.WithCancel(t.Context())
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -373,8 +384,9 @@ func TestCacheTrackersError(t *testing.T) {
 
 		c.cacheTrackersError(tr)
 
-		assert.Equal(t, context.Canceled, ctx.Err(), "expected that context we passed in would be canceled on a nil trakcer")
-		assert.Nil(t, c.blockingReqCtx.Err(), "expected that a new context would be created for blockingReqCtx")
+		require.ErrorIs(t, ctx.Err(), context.Canceled, "expected that context we passed in would be canceled on a nil tracker")
+		require.NotNil(t, c.blockingReqCtx, "expected that a new context would be created for blockingReqCtx")
+		require.NoError(t, c.blockingReqCtx.Err(), "expected that the new blockingReqCtx would not already be canceled")
 		assert.Empty(t, c.trackerRespErrors, "expected that a nil context would not write any errors to the trackerRespErrors map")
 	})
 
@@ -405,40 +417,38 @@ func TestCacheTrackersError(t *testing.T) {
 }
 
 func TestCheckCacheForStaleItems(t *testing.T) {
-	c := &Cacher{
-		trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-		trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
-		reqChan:           make(chan *FetchRequest, 1),
-		cOpts: CacheOpts{
-			MaxAge: 10 * time.Minute,
-			MinAge: 5 * time.Minute,
-		},
-	}
+	// The bubble is what lets us drop the one second timeout guard that used to wrap the channel read. If the stale check ever stops
+	// sending, every goroutine here blocks forever and synctest reports the deadlock instead of the test waiting out a timer.
+	synctest.Test(t, func(t *testing.T) {
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			reqChan:           make(chan *FetchRequest, 1),
+			cOpts: CacheOpts{
+				MaxAge: 10 * time.Minute,
+				MinAge: 5 * time.Minute,
+			},
+		}
 
-	ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
-	tracker := &rtorrent.Tracker{}
-	tracker = tracker.CloneWithTrackerIndex(&ti)
-	mt := &ModifiedTracker{Tracker: tracker}
-	ttci := &TimedTrackerCacheInstance{
-		Tracker:   mt,
-		FetchedAt: time.Now().Add(-15 * time.Minute),
-	}
-	c.trackerCache[ti] = ttci
+		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+		tracker := &rtorrent.Tracker{}
+		tracker = tracker.CloneWithTrackerIndex(&ti)
+		mt := &ModifiedTracker{Tracker: tracker}
+		ttci := &TimedTrackerCacheInstance{
+			Tracker:   mt,
+			FetchedAt: time.Now().Add(-15 * time.Minute),
+		}
+		c.trackerCache[ti] = ttci
 
-	wg := &sync.WaitGroup{}
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
+		wg := &sync.WaitGroup{}
+		wg.Go(func() {
+			c.checkCacheForStaleItems(t.Context())
+		})
 
-	wg.Go(func() {
-		c.checkCacheForStaleItems(ctx)
-	})
-
-	select {
-	case fr := <-c.reqChan:
+		fr := <-c.reqChan
+		require.NotNil(t, fr)
 		assert.Equal(t, &ti, fr.TrackerIndex)
-	case <-time.After(1 * time.Second):
-		t.Fatal("expected fetch request, but got none")
-	}
 
-	wg.Wait()
+		wg.Wait()
+	})
 }

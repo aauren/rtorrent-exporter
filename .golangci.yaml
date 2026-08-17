@@ -1,26 +1,50 @@
 version: "2"
 linters:
   enable:
+    - asasalint
+    - asciicheck
+    - bidichk
     - bodyclose
     - copyloopvar
     - depguard
     - dogsled
     - dupl
     - durationcheck
+    - errname
+    - errorlint
     - exhaustive
+    - fatcontext
+    - gocheckcompilerdirectives
     - gochecknoinits
     - goconst
     - gocritic
     - gosec
+    - iotamixing
     - lll
+    - loggercheck
+    - makezero
+    - mirror
     - misspell
     - mnd
+    - modernize
     - nakedret
+    - nilerr
+    - nilnesserr
     - noctx
     - nolintlint
+    - perfsprint
+    - predeclared
+    - promlinter
+    - reassign
+    - recvcheck
     - staticcheck
+    - testifylint
+    - thelper
+    - tparallel
     - unconvert
     - unparam
+    - usestdlibvars
+    - wastedassign
   settings:
     depguard:
       rules:
@@ -65,9 +89,6 @@ linters:
       - linters:
           - lll
         path: _test\.go
-      - linters:
-          - gocritic
-        text: appendAssign
       - linters:
           - gochecknoinits
         path: .*/cmd/.*\.go

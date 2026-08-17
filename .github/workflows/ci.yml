@@ -48,7 +48,7 @@ jobs:
         CGO_ENABLED: "0"
 
     - name: Test
-      run: go test -v ./...
+      run: make test BUILD_IN_DOCKER=false
 
   # Builds Container only if a tag or a pull request from a source branch within the repository
   ci-build-container:

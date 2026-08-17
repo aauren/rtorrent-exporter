@@ -6,6 +6,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -121,7 +122,7 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 		defer close(ch)
 		desc, err := collector.collectDownloadCounts(ch)
 		assert.Nil(t, desc)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}()
 
 	for range ch {
@@ -143,7 +144,7 @@ func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 		defer close(ch)
 		desc, err := collector.collectDownloadDetails(ch)
 		assert.Nil(t, desc)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 	}()
 
 	for range ch {
@@ -160,7 +161,7 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	go func() {
 		defer close(ch)
 		hasMessage, err := collector.parseDownloadDetailsMetrics(a, cmds, ch)
-		assert.Nil(t, err)
+		assert.NoError(t, err)
 		assert.False(t, hasMessage)
 	}()
 
@@ -174,7 +175,7 @@ func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
 	torSlice := []any{testHash, testName}
 
 	labels, err := collector.gatherDownloadDetailLabels(torSlice)
-	assert.Nil(t, err)
+	require.NoError(t, err)
 	assert.Equal(t, []string{testHash, testName}, labels)
 }
 

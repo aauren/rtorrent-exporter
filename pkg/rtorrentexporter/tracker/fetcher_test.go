@@ -8,6 +8,7 @@ import (
 	"github.com/aauren/rtorrent/rtorrent"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 const (
@@ -29,7 +30,7 @@ func (m *MockSource) TrackerWithDetails(ctx context.Context, ti *rtorrent.Tracke
 func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	index := 1
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
@@ -37,7 +38,7 @@ func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashIndexAllFields(ctx, hash, index)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -47,14 +48,14 @@ func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
 func TestFetcher_GetTrackersByHashAllFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
 	mockSource.On("TrackerWithDetails", ctx, mock.Anything, rtorrent.AllTrackerFields()).Return(expectedTrackers, nil)
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashAllFields(ctx, hash)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -64,7 +65,7 @@ func TestFetcher_GetTrackersByHashAllFields(t *testing.T) {
 func TestFetcher_GetTrackersAllFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	ti := &rtorrent.TrackerIndex{}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
@@ -72,7 +73,7 @@ func TestFetcher_GetTrackersAllFields(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersAllFields(ctx, ti)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -82,7 +83,7 @@ func TestFetcher_GetTrackersAllFields(t *testing.T) {
 func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	index := 1
 	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
@@ -91,7 +92,7 @@ func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashIndexSelectedFields(ctx, hash, index, fields)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -101,7 +102,7 @@ func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
 func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
 
@@ -109,7 +110,7 @@ func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersByHashSelectedFields(ctx, hash, fields)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -119,7 +120,7 @@ func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
 func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx := context.Background()
+	ctx := t.Context()
 	ti := &rtorrent.TrackerIndex{}
 	fields := []rtorrent.TrackerField{testField1, testField2}
 	expectedTrackers := []*rtorrent.Tracker{{}}
@@ -128,7 +129,7 @@ func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		trackers, err := fetcher.GetTrackersSelectedFields(ctx, ti, fields)
-		assert.NoError(t, err)
+		require.NoError(t, err)
 		assert.Equal(t, expectedTrackers, trackers)
 	})
 
@@ -138,7 +139,7 @@ func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
 func TestFetcher_Run(t *testing.T) {
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
-	ctx, cancel := context.WithCancel(context.Background())
+	ctx, cancel := context.WithCancel(t.Context())
 	defer cancel()
 	wg := &sync.WaitGroup{}
 	inCH := make(chan *FetchRequest)
@@ -156,7 +157,8 @@ func TestFetcher_Run(t *testing.T) {
 		inCH <- &FetchRequest{TrackerIndex: ti}
 		resp := <-outCH
 
-		assert.NoError(t, resp.Error)
+		require.NotNil(t, resp)
+		require.NoError(t, resp.Error)
 		assert.Equal(t, expectedTrackers, resp.Trackers)
 		mockSource.AssertExpectations(t)
 	})
@@ -170,7 +172,8 @@ func TestFetcher_Run(t *testing.T) {
 		inCH <- &FetchRequest{TrackerIndex: ti, Fields: fields}
 		resp := <-outCH
 
-		assert.NoError(t, resp.Error)
+		require.NotNil(t, resp)
+		require.NoError(t, resp.Error)
 		assert.Equal(t, expectedTrackers, resp.Trackers)
 		mockSource.AssertExpectations(t)
 	})

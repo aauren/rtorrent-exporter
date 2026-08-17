@@ -168,7 +168,13 @@ func (c *Cacher) GetTrackerFromCacheNonBlocking(ti *rtorrent.TrackerIndex) *Modi
 	if ttci.IsStale(c.cOpts.MinAge, c.cOpts.MaxAge) {
 		klog.V(1).Infof("tracker was found in cache but is stale, returning existing entry, but sending request to fetcher: %v", ti)
 		fr := &FetchRequest{TrackerIndex: ti}
-		c.reqChan <- fr
+		// This runs on the scrape path, so we can't afford to block on a full buffer (slow rtorrent, or fetchers already stopped during
+		// shutdown), which is why we drop the refresh instead, a later scrape or the stale checker will ask again
+		select {
+		case c.reqChan <- fr:
+		default:
+			klog.Warningf("fetcher request channel is full, unable to send request: %v", ti)
+		}
 	}
 
 	klog.V(2).Infof("tracker was found in cache, returning existing entry: %v", ti)

@@ -233,26 +233,6 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 		})
 	}
 
-	// Setup HTTP server for metrics and run it
-	mhOpts := http.MetricHandlerOpts{
-		MetricsAddr:    rootConfig.Telemetry.Addr,
-		MetricsPass:    rootConfig.Telemetry.Password,
-		MetricsPath:    rootConfig.Telemetry.Path,
-		MetricsTimeout: rootConfig.Telemetry.Timeout,
-		MetricsUser:    rootConfig.Telemetry.Username,
-	}
-	mh := http.NewMetricHandler(mhOpts)
-	klog.Info("starting HTTP server for metrics")
-	// Written by the goroutine below and only read after primaryWG.Wait(), which is what makes that read safe
-	var metricsErr error
-	primaryWG.Go(func() {
-		if err := mh.Run(primaryCtx); err != nil {
-			metricsErr = err
-			// An exporter that can't serve metrics has nothing useful left to do, so take the rest of the process down with it
-			masterCancel()
-		}
-	})
-
 	// Setup download collector & pre-warm any caches that may exist
 	klog.Info("setting up rTorrent exporter metrics")
 	colOpts := rtorrentexporter.CollectorOpts{
@@ -268,8 +248,30 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 	if err != nil {
 		return fmt.Errorf("failed to pre-warm caches successfully: %w", err)
 	}
+	// Registered before the listener exists, so the very first scrape already sees rtorrent metrics
 	prometheus.MustRegister(rte)
 	klog.Info("rTorrent exporter metrics setup complete")
+
+	// Setup HTTP server for metrics and run it
+	mhOpts := http.MetricHandlerOpts{
+		MetricsAddr:    rootConfig.Telemetry.Addr,
+		MetricsPass:    rootConfig.Telemetry.Password,
+		MetricsPath:    rootConfig.Telemetry.Path,
+		MetricsTimeout: rootConfig.Telemetry.Timeout,
+		MetricsUser:    rootConfig.Telemetry.Username,
+		Gatherer:       prometheus.DefaultGatherer,
+	}
+	mh := http.NewMetricHandler(mhOpts)
+	klog.Info("starting HTTP server for metrics")
+	// Written by the goroutine below and only read after primaryWG.Wait(), which is what makes that read safe
+	var metricsErr error
+	primaryWG.Go(func() {
+		if err := mh.Run(primaryCtx); err != nil {
+			metricsErr = err
+			// An exporter that can't serve metrics has nothing useful left to do, so take the rest of the process down with it
+			masterCancel()
+		}
+	})
 
 	// Output information about the exporter's configuration
 	authEnabled := rootConfig.Rtorrent.Username != "" && rootConfig.Rtorrent.Password != ""

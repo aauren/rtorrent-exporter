@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"time"
 
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"k8s.io/klog/v2"
 )
@@ -25,6 +26,8 @@ type MetricHandlerOpts struct {
 	MetricsPath    string
 	MetricsTimeout time.Duration
 	MetricsUser    string
+	// Gatherer is what the metrics endpoint serves, falling back to the default registry when nil
+	Gatherer prometheus.Gatherer
 }
 
 func basicAuth(next http.Handler, user, pass string) http.Handler {
@@ -47,8 +50,13 @@ func NewMetricHandler(opts MetricHandlerOpts) *MetricHandler {
 	// Create a new mux instead of the default mux
 	mux := http.NewServeMux()
 
+	gatherer := opts.Gatherer
+	if gatherer == nil {
+		gatherer = prometheus.DefaultGatherer
+	}
+
 	// Scraping is a read, so we register GET (which also covers HEAD) and let the mux answer anything else with a 405
-	mux.Handle("GET "+opts.MetricsPath, promhttp.Handler())
+	mux.Handle("GET "+opts.MetricsPath, promhttp.HandlerFor(gatherer, promhttp.HandlerOpts{}))
 	// Skip the redirect when metrics are already served from the root, because registering both on the same mux would panic
 	if opts.MetricsPath != "/" {
 		mux.HandleFunc("GET /", func(w http.ResponseWriter, r *http.Request) {

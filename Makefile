@@ -1,6 +1,6 @@
 ##### Main Build and Test Variables #####
 # Version Variables that are frequently modified
-DOCKER_LINT_IMAGE?=golangci/golangci-lint:v2.12.2
+DOCKER_LINT_IMAGE?=golangci/golangci-lint:v2.13.2
 DOCKER_BUILD_IMAGE?=golang:1.27.1
 # In GitHub actions where we make the official image, the runtime base is gcr.io/distroless/static to make a slim
 # container, however, here we use the full alpine image because the containers that come from the Makefile are presumed

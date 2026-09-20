@@ -311,62 +311,70 @@ func startPProfServer() {
 }
 
 func validateFlags() error {
-	if rootConfig.Rtorrent.Addr == "" {
+	return validateConfig(rootConfig)
+}
+
+func validateConfig(cfg *config.Config) error {
+	if cfg.Rtorrent.Addr == "" {
 		return errors.New("address of rTorrent XML-RPC server must be specified with '--rtorrent.addr' flag")
 	}
-	if rootConfig.Rtorrent.Timeout <= 0 {
+	if cfg.Rtorrent.Timeout <= 0 {
 		return errors.New("timeout for rTorrent request must be greater than 0")
 	}
-	if rootConfig.Telemetry.Timeout <= 0 {
+	if cfg.Telemetry.Timeout <= 0 {
 		return errors.New("timeout for telemetry request must be greater than 0")
 	}
 	// The metrics path ends up in a ServeMux method pattern, which panics at registration time on a malformed path, so we reject it here
 	// with a proper error instead
-	if !strings.HasPrefix(rootConfig.Telemetry.Path, "/") {
+	if !strings.HasPrefix(cfg.Telemetry.Path, "/") {
 		return errors.New("telemetry path must begin with '/', please check the '--telemetry.path' flag")
 	}
-	if strings.ContainsAny(rootConfig.Telemetry.Path, " \t{}") {
+	if strings.ContainsAny(cfg.Telemetry.Path, " \t{}") {
 		return errors.New("telemetry path must not contain whitespace or braces, please check the '--telemetry.path' flag")
 	}
 
 	// Validate telemetry settings
-	telemetryUserSet := rootConfig.Telemetry.Username != ""
-	telemetryPassSet := rootConfig.Telemetry.Password != ""
+	telemetryUserSet := cfg.Telemetry.Username != ""
+	telemetryPassSet := cfg.Telemetry.Password != ""
 	if telemetryUserSet != telemetryPassSet {
 		return errors.New("telemetry basic authentication requires both '--telemetry.username' and '--telemetry.password' to be set " +
 			"(or neither)")
 	}
 
 	// Validate tracker settings
-	rtorrentUserSet := rootConfig.Rtorrent.Username != ""
-	rtorrentPassSet := rootConfig.Rtorrent.Password != ""
+	rtorrentUserSet := cfg.Rtorrent.Username != ""
+	rtorrentPassSet := cfg.Rtorrent.Password != ""
 	if rtorrentUserSet != rtorrentPassSet {
 		return errors.New("rTorrent basic authentication requires both '--rtorrent.username' and '--rtorrent.password' to be set " +
 			"(or neither)")
 	}
 
-	if rootConfig.Rtorrent.Trackers.Enabled && !rootConfig.Rtorrent.Downloads.Collect.Details {
+	if cfg.Rtorrent.Trackers.Enabled && !cfg.Rtorrent.Downloads.Collect.Details {
 		return errors.New("collecting tracker information requires collecting download details, please either disable " +
 			"rtorrent.trackers.enabled or enable rtorrent.downloads.collect.details")
 	}
-	if !rootConfig.Rtorrent.Trackers.Enabled {
+	if !cfg.Rtorrent.Trackers.Enabled {
 		return nil
 	}
 
-	if rootConfig.Rtorrent.Trackers.Cache.MinAge <= 0 {
+	if cfg.Rtorrent.Trackers.Cache.MinAge <= 0 {
 		return errors.New("minimum age of a cached tracker must be greater than 0")
 	}
-	if rootConfig.Rtorrent.Trackers.Cache.MaxAge <= 0 {
+	if cfg.Rtorrent.Trackers.Cache.MaxAge <= 0 {
 		return errors.New("maximum age of a cached tracker must be greater than 0")
 	}
-	if rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests <= 0 {
+	// The refresh jitter is drawn from the window between the two, so there has to be one
+	if cfg.Rtorrent.Trackers.Cache.MinAge >= cfg.Rtorrent.Trackers.Cache.MaxAge {
+		return errors.New("minimum age of a cached tracker must be less than the maximum age")
+	}
+	if cfg.Rtorrent.Trackers.Cache.MaxParallelRequests <= 0 {
 		return errors.New("maximum number of parallel requests that will be made to rtorrent at a time for fetching tracker " +
 			"information must be greater than 0")
 	}
 
 	// Attempt to compile all regex matchers
-	for i := range rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions {
-		tns := &rootConfig.Rtorrent.Trackers.TrackerNameSubstitutions[i]
+	for i := range cfg.Rtorrent.Trackers.TrackerNameSubstitutions {
+		tns := &cfg.Rtorrent.Trackers.TrackerNameSubstitutions[i]
 		if tns.ConvertTo == "" {
 			return fmt.Errorf("tracker name substitution %v must have a 'convert-to' value", i)
 		}

@@ -101,7 +101,7 @@ func init() {
 		"[optional] password used for HTTP Basic authentication with rTorrent XML-RPC server")
 	_ = viper.BindPFlag("rtorrent.password", rootCmd.Flags().Lookup("rtorrent.password"))
 	rootCmd.Flags().BoolVar(&rootConfig.Rtorrent.Insecure, "rtorrent.insecure", false,
-		"[optional] allow using XML-RPC with a non-CA signed certificat (defaults: false)")
+		"[optional] allow using XML-RPC with a non-CA signed certificate (default: false)")
 	_ = viper.BindPFlag("rtorrent.insecure", rootCmd.Flags().Lookup("rtorrent.insecure"))
 	rootCmd.Flags().DurationVar(&rootConfig.Rtorrent.Timeout, "rtorrent.timeout", 10*time.Second,
 		"[optional] duration of how long to wait before timing out rtorrent request")
@@ -278,16 +278,7 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 		}
 	})
 
-	// Output information about the exporter's configuration
-	authEnabled := rootConfig.Rtorrent.Username != "" && rootConfig.Rtorrent.Password != ""
-	klog.Infof("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
-		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v)"+
-		"(collect tracker info: %v) (tracker cache min age: %v) (tracker cache max age: %v) (tracker cache max parallel requests: %v)",
-		rootConfig.Telemetry.Path, rootConfig.Telemetry.Addr, rootConfig.Telemetry.Timeout,
-		authEnabled, rootConfig.Rtorrent.Addr, rootConfig.Rtorrent.Timeout, rootConfig.Rtorrent.Downloads.Collect.Details,
-		rootConfig.Rtorrent.Downloads.Collect.Messages, rootConfig.Rtorrent.Trackers.Enabled, rootConfig.Rtorrent.Trackers.Cache.MinAge,
-		rootConfig.Rtorrent.Trackers.Cache.MaxAge, rootConfig.Rtorrent.Trackers.Cache.MaxParallelRequests,
-	)
+	klog.Info(startupSummary(rootConfig))
 	klog.Info("rTorrent exporter started successfully")
 
 	waitForShutdown(primaryCtx, masterCancel)
@@ -299,6 +290,19 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 
 	klog.Info("rTorrent exporter shutdown successfully")
 	return nil
+}
+
+// startupSummary is the one line we log with the effective configuration
+func startupSummary(cfg *config.Config) string {
+	authEnabled := cfg.Rtorrent.Username != "" && cfg.Rtorrent.Password != ""
+	return fmt.Sprintf("starting rTorrent exporter on %q for server %q (telemetry timeout: %v) "+
+		"(authentication: %v) (insecure: %v) (timeout: %v) (collect download details: %v) (collect messages: %v) "+
+		"(collect tracker info: %v) (tracker cache min age: %v) (tracker cache max age: %v) (tracker cache max parallel requests: %v)",
+		cfg.Telemetry.Addr+cfg.Telemetry.Path, cfg.Rtorrent.Addr, cfg.Telemetry.Timeout,
+		authEnabled, cfg.Rtorrent.Insecure, cfg.Rtorrent.Timeout, cfg.Rtorrent.Downloads.Collect.Details,
+		cfg.Rtorrent.Downloads.Collect.Messages, cfg.Rtorrent.Trackers.Enabled, cfg.Rtorrent.Trackers.Cache.MinAge,
+		cfg.Rtorrent.Trackers.Cache.MaxAge, cfg.Rtorrent.Trackers.Cache.MaxParallelRequests,
+	)
 }
 
 // waitForShutdown blocks until ctx is done, which is either SIGINT / SIGTERM or a fatal error in one of the children.

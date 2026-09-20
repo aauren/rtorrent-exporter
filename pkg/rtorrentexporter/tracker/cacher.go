@@ -298,8 +298,8 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	c.cacheMu.Lock()
 	defer c.cacheMu.Unlock()
 
-	// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained
-	// a hash now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed
+	// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which previously only contained
+	// a hash now contains a hash and an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed
 	// version that was originally looked up.
 	// A torrent with no trackers still needs an entry, otherwise every scrape asks for it again
 	if len(tr.Trackers) == 0 {
@@ -332,9 +332,8 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	}
 }
 
-// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained a hash
-// now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed version that
-// was originally looked up.
+// With more than one tracker returned, the lookup was almost certainly by hash alone, so we add a hash-only entry alongside the
+// indexed ones so that the original lookup key gets cached too.
 func trackerSliceEnsuringTrackerWithHashOnly(tr *TrackerResponse) []*rtorrent.Tracker {
 	// With one tracker there's nothing to add, and with none there's nothing to derive a hash-only entry from
 	if len(tr.Trackers) <= 1 {

@@ -48,7 +48,7 @@ type DownloadsCollector struct {
 	DownloadsSeeding    *prometheus.Desc
 	DownloadsLeeching   *prometheus.Desc
 	DownloadsActive     *prometheus.Desc
-	// This one requres download details to be collected, but is otherwise also a simple count
+	// This one requires download details to be collected, but is otherwise also a simple count
 	DownloadsError *prometheus.Desc
 
 	// Download details metrics, these are the actual download rates and totals

@@ -85,6 +85,27 @@ func TestWaitForShutdown_secondSignalKills(t *testing.T) {
 	}
 }
 
+func TestStartupSummary(t *testing.T) {
+	t.Parallel()
+	summary := startupSummary(validTestConfig())
+
+	// Every parenthesised group should be separated by a space, a ")(" means one of the format strings lost its trailing space
+	assert.NotContains(t, summary, ")(")
+	assert.Contains(t, summary, "(collect tracker info: true)")
+	// The verbs and the args drifted out of step at some point, so pin a few that were landing in the wrong slot
+	assert.Contains(t, summary, `on ":9135/metrics"`)
+	assert.Contains(t, summary, `for server "http://localhost:8000/RPC2"`)
+	assert.Contains(t, summary, "(insecure: false)")
+}
+
+func TestFlagUsageSpelling(t *testing.T) {
+	t.Parallel()
+	usage := rootCmd.Flags().Lookup("rtorrent.insecure").Usage
+
+	assert.NotContains(t, usage, "certificat ")
+	assert.Contains(t, usage, "certificate")
+}
+
 func TestLoadConfig(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

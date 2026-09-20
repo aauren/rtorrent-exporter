@@ -25,6 +25,8 @@ type FetchRequest struct {
 
 // TrackerResponse is a construct that contains the response from a tracker FetchRequest
 type TrackerResponse struct {
+	// TrackerIndex is the index that was asked for, so an error or empty response can still be keyed on something
+	TrackerIndex *rtorrent.TrackerIndex
 	// Trackers is a slice of trackers that were fetched. If an index was passed in the TrackerIndex object, then it should only ever
 	// contain a single Tracker. However, if only a hash was passed, then it may contain multiple trackers.
 	Trackers []*rtorrent.Tracker
@@ -115,7 +117,7 @@ func (f *Fetcher) Run(ctx context.Context, inCH <-chan *FetchRequest, outCH chan
 			// Guard the send with the context, because the cacher stops draining outCH once it's cancelled, and a bare send on a
 			// full buffer would then hang this goroutine and stall shutdown forever
 			select {
-			case outCH <- &TrackerResponse{Trackers: resp, Error: err, FetchedAt: time.Now()}:
+			case outCH <- &TrackerResponse{TrackerIndex: req.TrackerIndex, Trackers: resp, Error: err, FetchedAt: time.Now()}:
 			case <-ctx.Done():
 				klog.Infof("stopping tracker fetcher thread")
 				return

@@ -276,6 +276,18 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 	// In the case that there is more than one tracker returned, then it is likely that the TrackerIndex which perviously only contained
 	// a hash now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed
 	// version that was originally looked up.
+	// A torrent with no trackers still needs an entry, otherwise every scrape asks for it again
+	if len(tr.Trackers) == 0 {
+		if tr.TrackerIndex != nil {
+			c.trackerCache[*tr.TrackerIndex] = &TimedTrackerCacheInstance{
+				Tracker:   &ModifiedTracker{SubstitutedDomain: unknownDomain},
+				FetchedAt: tr.FetchedAt,
+			}
+			delete(c.trackerRespErrors, *tr.TrackerIndex)
+		}
+		return
+	}
+
 	ts := trackerSliceEnsuringTrackerWithHashOnly(tr)
 
 	for _, t := range ts {
@@ -299,8 +311,8 @@ func (c *Cacher) cacheTrackers(tr *TrackerResponse) {
 // now contains a hash an index, so we need to make a non-indexed one and add it so that we cache the error for the non-indexed version that
 // was originally looked up.
 func trackerSliceEnsuringTrackerWithHashOnly(tr *TrackerResponse) []*rtorrent.Tracker {
-	// If there is only one tracker in the response, then we don't need to do anything.
-	if len(tr.Trackers) == 1 {
+	// With one tracker there's nothing to add, and with none there's nothing to derive a hash-only entry from
+	if len(tr.Trackers) <= 1 {
 		return tr.Trackers
 	}
 
@@ -347,6 +359,15 @@ func (c *Cacher) cacheTrackersError(tr *TrackerResponse) {
 		c.blockingReqCancel()
 		// Setup new blocking request context / cancel function so that we can bail out again in the future if needed
 		c.blockingReqCtx, c.blockingReqCancel = context.WithCancel(context.Background())
+		return
+	}
+
+	// Most failures come back with no trackers at all, so the requested index is the only thing we can key the error on
+	if len(tr.Trackers) == 0 {
+		if tr.TrackerIndex != nil {
+			c.trackerRespErrors[*tr.TrackerIndex] = err
+			delete(c.trackerCache, *tr.TrackerIndex)
+		}
 		return
 	}
 

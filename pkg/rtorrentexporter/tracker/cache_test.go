@@ -383,6 +383,28 @@ func TestCacheTrackers(t *testing.T) {
 		assert.Equal(t, mt1HashOnly, c.trackerCache[*ti1HashOnly].Tracker)
 		assert.Empty(t, c.trackerRespErrors)
 	})
+
+	// A torrent with no trackers at all comes back as an empty success, which must not panic and must leave something in the cache so
+	// that callers stop re-requesting it
+	t.Run("no trackers", func(t *testing.T) {
+		t.Parallel()
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+		}
+
+		ti := rtorrent.NewTrackerNoIndex("12345")
+		tr := &TrackerResponse{
+			TrackerIndex: ti,
+			FetchedAt:    time.Now(),
+		}
+
+		require.NotPanics(t, func() { c.cacheTrackers(tr) })
+
+		require.Contains(t, c.trackerCache, *ti)
+		assert.Equal(t, unknownDomain, c.trackerCache[*ti].Tracker.SubstitutedDomain)
+		assert.Empty(t, c.trackerRespErrors)
+	})
 }
 
 func TestCacheTrackersError(t *testing.T) {
@@ -431,6 +453,28 @@ func TestCacheTrackersError(t *testing.T) {
 
 		assert.Equal(t, err, c.trackerRespErrors[*ti1])
 		assert.Equal(t, err, c.trackerRespErrors[*ti2])
+		assert.Empty(t, c.trackerCache)
+	})
+
+	// This is what every transport level failure looks like, an error with nil trackers, so it must not panic and the error has to be
+	// keyed on the index that was asked for since there's nothing else to key it on
+	t.Run("error with no trackers", func(t *testing.T) {
+		t.Parallel()
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+		}
+
+		ti := rtorrent.NewTrackerNoIndex("12345")
+		err := errors.New("test error")
+		tr := &TrackerResponse{
+			TrackerIndex: ti,
+			Error:        err,
+		}
+
+		require.NotPanics(t, func() { c.cacheTrackersError(tr) })
+
+		assert.Equal(t, err, c.trackerRespErrors[*ti])
 		assert.Empty(t, c.trackerCache)
 	})
 }

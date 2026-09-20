@@ -167,6 +167,7 @@ func TestFetcher_Run(t *testing.T) {
 		require.NotNil(t, resp)
 		require.NoError(t, resp.Error)
 		assert.Equal(t, expectedTrackers, resp.Trackers)
+		assert.Equal(t, ti, resp.TrackerIndex)
 		mockSource.AssertExpectations(t)
 	})
 

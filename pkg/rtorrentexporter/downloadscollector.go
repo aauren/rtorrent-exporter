@@ -338,6 +338,11 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 
 // parseDownloadDetailsMetrics parses the metrics for a single download and sends them to the provided channel.
 func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string, ch chan<- prometheus.Metric) (bool, error) {
+	// Every value is matched to its command by position, so a row of the wrong length would panic or silently misattribute values
+	if len(a) != len(cmds) {
+		return false, fmt.Errorf("expected %d values for download details but got %d", len(cmds), len(a))
+	}
+
 	labels, err := c.gatherDownloadDetailLabels(a)
 	if err != nil {
 		return false, err
@@ -411,6 +416,10 @@ func (c *DownloadsCollector) parseDownloadDetailsMetrics(a []any, cmds []string,
 
 // gatherDownloadDetailLabels gathers the labels for a single download.
 func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]string, error) {
+	if len(torSlice) < 2 {
+		return nil, fmt.Errorf("expected at least a hash and name in download details but got %d values", len(torSlice))
+	}
+
 	hash, ok := torSlice[0].(string)
 	if !ok {
 		return nil, ErrHashConversion

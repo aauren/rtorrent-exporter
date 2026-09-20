@@ -174,6 +174,35 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	}
 }
 
+// A row that doesn't line up with the commands we sent is rtorrent misbehaving, and that should be an error rather than a panic that
+// takes down the exporter
+func TestDownloadsCollector_parseDownloadDetailsMetrics_malformedRow(t *testing.T) {
+	t.Parallel()
+	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
+	tests := []struct {
+		name string
+		row  []any
+	}{
+		{"empty row", []any{}},
+		{"hash only", []any{testHash}},
+		{"short row", []any{testHash, testName, int64(100)}},
+		{"long row", []any{testHash, testName, int64(100), int64(200), int64(300), int64(400), int64(500)}},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
+			ch := make(chan prometheus.Metric, len(cmds))
+
+			require.NotPanics(t, func() {
+				_, err := collector.parseDownloadDetailsMetrics(tt.row, cmds, ch)
+				require.Error(t, err)
+			})
+		})
+	}
+}
+
 func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
 	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{})

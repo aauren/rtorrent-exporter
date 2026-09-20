@@ -15,7 +15,7 @@ import (
 func TestNewMetricHandler_servesGivenRegistry(t *testing.T) {
 	t.Parallel()
 	reg := prometheus.NewRegistry()
-	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: "rtorrent_test_gauge", Help: "test"})
+	g := prometheus.NewGauge(prometheus.GaugeOpts{Name: "rtorrent_test_value", Help: "test"})
 	g.Set(42)
 	reg.MustRegister(g)
 
@@ -27,8 +27,8 @@ func TestNewMetricHandler_servesGivenRegistry(t *testing.T) {
 	})
 
 	rec := httptest.NewRecorder()
-	mh.Server.Handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, "/metrics", nil))
+	mh.Server.Handler.ServeHTTP(rec, httptest.NewRequestWithContext(t.Context(), http.MethodGet, "/metrics", nil))
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	assert.Contains(t, rec.Body.String(), "rtorrent_test_gauge 42")
+	assert.Contains(t, rec.Body.String(), "rtorrent_test_value 42")
 }

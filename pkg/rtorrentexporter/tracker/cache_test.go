@@ -245,6 +245,36 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 	})
 }
 
+// A scraper parked on a full cacheCheckChan refills the buffer the instant checkCacheCheckChan reads from it, so the old re-queue
+// send had nowhere to go and blocked the cacher's main loop. In the bubble that shows up as a deadlock instead of a hung test.
+func TestCheckCacheCheckChan_doesNotBlockOnRequeue(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
+			cacheCheckChan:    make(chan *FetchRequest, 1),
+			reqChan:           make(chan *FetchRequest, 1),
+			cOpts: CacheOpts{
+				MaxAge: 10 * time.Minute,
+				MinAge: 5 * time.Minute,
+			},
+		}
+
+		fr1 := &FetchRequest{TrackerIndex: rtorrent.NewTrackerNoIndex("11111")}
+		fr2 := &FetchRequest{TrackerIndex: rtorrent.NewTrackerNoIndex("22222")}
+		c.reqChan <- &FetchRequest{TrackerIndex: rtorrent.NewTrackerNoIndex("00000")}
+		c.cacheCheckChan <- fr1
+		go func() { c.cacheCheckChan <- fr2 }()
+		synctest.Wait()
+
+		c.checkCacheCheckChan()
+
+		// fr1 had nowhere to go and was dropped, fr2 is still waiting its turn
+		require.Len(t, c.cacheCheckChan, 1)
+		assert.Equal(t, fr2, <-c.cacheCheckChan)
+	})
+}
+
 func TestCheckCacheCheckChan(t *testing.T) {
 	t.Parallel()
 	tests := []struct {

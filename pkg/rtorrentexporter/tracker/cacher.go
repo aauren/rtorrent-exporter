@@ -457,8 +457,9 @@ func (c *Cacher) checkCacheCheckChan() {
 				case c.reqChan <- fr:
 					klog.V(1).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)
 				default:
-					klog.V(2).Infof("fetcher request channel is full, re-queuing the request: %v", fr.TrackerIndex)
-					c.cacheCheckChan <- fr
+					// Putting it back could block the main loop if a scraper refilled the buffer, so we drop it and let the next
+					// scrape ask again
+					klog.Warningf("fetcher request channel is full, dropping request: %v", fr.TrackerIndex)
 					return
 				}
 				continue

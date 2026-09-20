@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/config"
+	"github.com/spf13/viper"
+	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
 
@@ -22,6 +24,29 @@ func validTestConfig() *config.Config {
 	cfg.Telemetry.Path = "/metrics"
 	cfg.Telemetry.Timeout = 10 * time.Second
 	return cfg
+}
+
+// Nested keys have dots and dashes in them, neither of which most shells will let you put in an env var name
+func TestConfigureViperEnv(t *testing.T) {
+	tests := []struct {
+		name string
+		env  string
+		key  string
+	}{
+		{"top level key", "RTORRENT_EXPORTER_USEVIPER", "useviper"},
+		{"nested key", "RTORRENT_EXPORTER_RTORRENT_ADDR", "rtorrent.addr"},
+		{"nested key with dash", "RTORRENT_EXPORTER_RTORRENT_TRACKERS_CACHE_MIN_AGE", "rtorrent.trackers.cache.min-age"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			v := viper.New()
+			configureViperEnv(v)
+			t.Setenv(tt.env, "from-env")
+
+			assert.Equal(t, "from-env", v.GetString(tt.key))
+		})
+	}
 }
 
 func TestValidateConfig(t *testing.T) {

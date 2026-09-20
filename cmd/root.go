@@ -149,7 +149,7 @@ func initConfig() {
 		viper.SetConfigName(".rtorrent-exporter")
 	}
 
-	viper.AutomaticEnv()
+	configureViperEnv(viper.GetViper())
 
 	if err := viper.ReadInConfig(); err == nil {
 		klog.Infof("Using config file: %v", viper.ConfigFileUsed())
@@ -161,6 +161,13 @@ func initConfig() {
 			klog.Fatalf("failed to unmarshal configuration: %v", err)
 		}
 	}
+}
+
+// configureViperEnv maps config keys like rtorrent.trackers.cache.min-age to RTORRENT_EXPORTER_RTORRENT_TRACKERS_CACHE_MIN_AGE
+func configureViperEnv(v *viper.Viper) {
+	v.SetEnvPrefix("rtorrent_exporter")
+	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_", "-", "_"))
+	v.AutomaticEnv()
 }
 
 func RunRoot(cmd *cobra.Command, args []string) error {

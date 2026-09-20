@@ -147,6 +147,13 @@ telemetry:
 useviper: true
 ```
 
+Environment Variables
+---------------------
+
+Every config key can also be set from the environment, which is handy in containers. Prefix the key with `RTORRENT_EXPORTER_`, upper
+case it, and swap any `.` or `-` for `_`, so `rtorrent.trackers.cache.min-age` becomes `RTORRENT_EXPORTER_RTORRENT_TRACKERS_CACHE_MIN_AGE`.
+In order of precedence, an explicitly passed flag wins, then an environment variable, then the config file, then the flag's default.
+
 Tracker Name Substitution
 -------------------------
 

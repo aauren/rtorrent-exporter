@@ -8,6 +8,7 @@ import (
 	"slices"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/config"
@@ -58,6 +59,44 @@ type Cacher struct {
 	cacheMu           sync.RWMutex
 	blockingReqCtx    context.Context
 	blockingReqCancel context.CancelFunc
+
+	// Dropped request counters, exposed via Stats() for Prometheus reporting without a prometheus dependency in this package.
+	droppedCacheCheckRequests   atomic.Uint64
+	droppedStaleRefreshRequests atomic.Uint64
+}
+
+// CacherStats is a point-in-time snapshot of the cacher's internal queues and drop counters.
+type CacherStats struct {
+	// FetchQueueLength/Capacity describe reqChan, which fetchers pull from.
+	FetchQueueLength   int
+	FetchQueueCapacity int
+	// CacheCheckQueueLength/Capacity describe cacheCheckChan, which holds never-before-cached tracker requests.
+	CacheCheckQueueLength   int
+	CacheCheckQueueCapacity int
+	// CacheSize/CacheErrorSize are entry counts in the positive and negative caches.
+	CacheSize      int
+	CacheErrorSize int
+	// DroppedCacheCheckRequests counts drops from checkCacheCheckChan forwarding a never-before-seen tracker.
+	DroppedCacheCheckRequests uint64
+	// DroppedStaleRefreshRequests counts drops from sendRefresh queuing a refresh for an already-cached tracker.
+	DroppedStaleRefreshRequests uint64
+}
+
+// Stats returns a point-in-time snapshot of the cacher's queues and drop counters.
+func (c *Cacher) Stats() CacherStats {
+	c.cacheMu.RLock()
+	defer c.cacheMu.RUnlock()
+
+	return CacherStats{
+		FetchQueueLength:            len(c.reqChan),
+		FetchQueueCapacity:          cap(c.reqChan),
+		CacheCheckQueueLength:       len(c.cacheCheckChan),
+		CacheCheckQueueCapacity:     cap(c.cacheCheckChan),
+		CacheSize:                   len(c.trackerCache),
+		CacheErrorSize:              len(c.trackerRespErrors),
+		DroppedCacheCheckRequests:   c.droppedCacheCheckRequests.Load(),
+		DroppedStaleRefreshRequests: c.droppedStaleRefreshRequests.Load(),
+	}
 }
 
 // CacheOpts is a struct that contains the options for a Cacher.
@@ -162,7 +201,9 @@ func (c *Cacher) sendRefresh(ti *rtorrent.TrackerIndex) {
 	select {
 	case c.reqChan <- &FetchRequest{TrackerIndex: ti}:
 	default:
-		klog.Warningf("fetcher request channel is full, unable to send request: %v", ti)
+		c.droppedStaleRefreshRequests.Add(1)
+		// V(1) since bursts are expected and self-heal; sustained drops belong in the dropped-requests metric, not logs.
+		klog.V(1).Infof("fetcher request channel is full, unable to send request: %v", ti)
 	}
 }
 
@@ -456,9 +497,9 @@ func (c *Cacher) checkCacheCheckChan() {
 				case c.reqChan <- fr:
 					klog.V(1).Infof("sent request to fetcher for tracker: %v", fr.TrackerIndex)
 				default:
-					// Putting it back could block the main loop if a scraper refilled the buffer, so we drop it and let the next
-					// scrape ask again
-					klog.Warningf("fetcher request channel is full, dropping request: %v", fr.TrackerIndex)
+					// Putting it back could block the main loop if a scraper refilled the buffer, so we drop it instead.
+					c.droppedCacheCheckRequests.Add(1)
+					klog.V(1).Infof("fetcher request channel is full, dropping request: %v", fr.TrackerIndex)
 					return
 				}
 				continue

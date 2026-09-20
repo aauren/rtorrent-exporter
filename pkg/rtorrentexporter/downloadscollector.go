@@ -60,6 +60,16 @@ type DownloadsCollector struct {
 	// Download messages, these are the messages that come from the tracker
 	DownloadMessages *prometheus.Desc
 
+	// DownloadsScrapeDurationSeconds mirrors the "Finished collecting downloads metrics" log line as a real metric.
+	DownloadsScrapeDurationSeconds *prometheus.Desc
+
+	// Tracker cache health metrics, sourced from tracker.Cacher.Stats().
+	TrackerCacheFetchRequestsDropped *prometheus.Desc
+	TrackerCacheFetchQueueLength     *prometheus.Desc
+	TrackerCacheCheckQueueLength     *prometheus.Desc
+	TrackerCacheEntries              *prometheus.Desc
+	TrackerCacheErrorEntries         *prometheus.Desc
+
 	// detailDescs maps each download detail command that carries a plain int64 counter to the metric it feeds, so that parsing a
 	// download's details is a lookup rather than a case per command. cmdMessage is deliberately absent because it needs real handling.
 	detailDescs map[string]*prometheus.Desc
@@ -179,9 +189,55 @@ func NewDownloadsCollector(ds DownloadsSource, collectorOpts CollectorOpts) *Dow
 			nil,
 		),
 
+		DownloadsScrapeDurationSeconds: prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, subsystem, "scrape_duration_seconds"),
+			"How long the last downloads scrape took to complete.",
+			nil,
+			nil,
+		),
+
 		ds: ds,
 
 		collectOpts: &collectorOpts,
+	}
+
+	if downCollector.collectOpts.CollectTrackerInfo {
+		const trackerSubsystem = "tracker_cache"
+
+		downCollector.TrackerCacheFetchRequestsDropped = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, trackerSubsystem, "fetch_requests_dropped_total"),
+			"Number of tracker fetch requests dropped because the fetcher queue was full.",
+			[]string{"reason"},
+			nil,
+		)
+
+		downCollector.TrackerCacheFetchQueueLength = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, trackerSubsystem, "fetch_queue_length"),
+			"Current number of requests queued for a tracker fetcher to pick up.",
+			nil,
+			nil,
+		)
+
+		downCollector.TrackerCacheCheckQueueLength = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, trackerSubsystem, "check_queue_length"),
+			"Current number of requests queued for a never-before-cached tracker to be checked against the cache.",
+			nil,
+			nil,
+		)
+
+		downCollector.TrackerCacheEntries = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, trackerSubsystem, "entries"),
+			"Number of trackers currently held in the positive cache.",
+			nil,
+			nil,
+		)
+
+		downCollector.TrackerCacheErrorEntries = prometheus.NewDesc(
+			prometheus.BuildFQName(namespace, trackerSubsystem, "error_entries"),
+			"Number of trackers currently held in the negative (error) cache.",
+			nil,
+			nil,
+		)
 	}
 
 	if downCollector.collectOpts.DownloadDetails {
@@ -261,8 +317,28 @@ func (c *DownloadsCollector) collect(ch chan<- prometheus.Metric) (*prometheus.D
 		}
 	}
 
-	klog.V(1).Infof("Finished collecting downloads metrics in %v", time.Since(started))
+	if c.collectOpts.CollectTrackerInfo && c.collectOpts.TC != nil {
+		c.collectTrackerCacheStats(ch)
+	}
+
+	elapsed := time.Since(started)
+	klog.V(1).Infof("Finished collecting downloads metrics in %v", elapsed)
+	ch <- prometheus.MustNewConstMetric(c.DownloadsScrapeDurationSeconds, prometheus.GaugeValue, elapsed.Seconds())
 	return nil, nil
+}
+
+// collectTrackerCacheStats reports the tracker cacher's queue depths and drop counters as metrics.
+func (c *DownloadsCollector) collectTrackerCacheStats(ch chan<- prometheus.Metric) {
+	stats := c.collectOpts.TC.Stats()
+
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheFetchRequestsDropped, prometheus.CounterValue,
+		float64(stats.DroppedCacheCheckRequests), "cache_check")
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheFetchRequestsDropped, prometheus.CounterValue,
+		float64(stats.DroppedStaleRefreshRequests), "stale_refresh")
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheFetchQueueLength, prometheus.GaugeValue, float64(stats.FetchQueueLength))
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheCheckQueueLength, prometheus.GaugeValue, float64(stats.CacheCheckQueueLength))
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheEntries, prometheus.GaugeValue, float64(stats.CacheSize))
+	ch <- prometheus.MustNewConstMetric(c.TrackerCacheErrorEntries, prometheus.GaugeValue, float64(stats.CacheErrorSize))
 }
 
 // collectDownloadCounts collects metrics which track number of downloads in various possible states.
@@ -497,6 +573,7 @@ func (c *DownloadsCollector) Describe(ch chan<- *prometheus.Desc) {
 		c.DownloadsSeeding,
 		c.DownloadsLeeching,
 		c.DownloadsActive,
+		c.DownloadsScrapeDurationSeconds,
 	}
 
 	if c.collectOpts.DownloadDetails {
@@ -512,6 +589,16 @@ func (c *DownloadsCollector) Describe(ch chan<- *prometheus.Desc) {
 	// Messages are only ever emitted from the details path, so they need both switches on
 	if c.collectOpts.DownloadDetails && c.collectOpts.DownloadMessages {
 		ds = append(ds, c.DownloadMessages)
+	}
+
+	if c.collectOpts.CollectTrackerInfo {
+		ds = append(ds,
+			c.TrackerCacheFetchRequestsDropped,
+			c.TrackerCacheFetchQueueLength,
+			c.TrackerCacheCheckQueueLength,
+			c.TrackerCacheEntries,
+			c.TrackerCacheErrorEntries,
+		)
 	}
 
 	for _, d := range ds {

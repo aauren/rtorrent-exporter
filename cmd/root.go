@@ -283,8 +283,7 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 	)
 	klog.Info("rTorrent exporter started successfully")
 
-	// Wait for SIGINT or SIGTERM
-	<-primaryCtx.Done()
+	waitForShutdown(primaryCtx, masterCancel)
 	klog.Info("shutting down rTorrent exporter")
 	primaryWG.Wait()
 	if metricsErr != nil {
@@ -293,6 +292,13 @@ func RunRoot(cmd *cobra.Command, args []string) error {
 
 	klog.Info("rTorrent exporter shutdown successfully")
 	return nil
+}
+
+// waitForShutdown blocks until ctx is done, which is either SIGINT / SIGTERM or a fatal error in one of the children.
+func waitForShutdown(ctx context.Context, stop context.CancelFunc) {
+	<-ctx.Done()
+	// Restore default signal handling so that a second SIGINT during a slow drain kills us instead of being swallowed
+	stop()
 }
 
 // startPProfServer serves the pprof handlers on a mux of its own, so that we're not also exposing whatever else happens to have found its

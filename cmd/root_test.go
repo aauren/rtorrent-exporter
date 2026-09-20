@@ -1,6 +1,13 @@
 package cmd
 
 import (
+	"bufio"
+	"context"
+	"fmt"
+	"os"
+	"os/exec"
+	"os/signal"
+	"syscall"
 	"testing"
 	"time"
 
@@ -24,6 +31,58 @@ func validTestConfig() *config.Config {
 	cfg.Telemetry.Path = "/metrics"
 	cfg.Telemetry.Timeout = 10 * time.Second
 	return cfg
+}
+
+const shutdownHelperEnv = "RTORRENT_EXPORTER_TEST_SHUTDOWN_HELPER"
+
+// This re-execs the test binary as a child that installs the signal handler the same way RunRoot does and then pretends to be stuck in a
+// slow drain. The parent sends SIGINT twice, and the second one has to kill the child rather than being swallowed by the handler.
+func TestWaitForShutdown_secondSignalKills(t *testing.T) {
+	if os.Getenv(shutdownHelperEnv) == "1" {
+		ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT)
+		fmt.Println("ready")
+		waitForShutdown(ctx, stop)
+		fmt.Println("draining")
+		time.Sleep(10 * time.Second)
+		return
+	}
+
+	//nolint:gosec // G204 doesn't like os.Args[0], but re-running our own test binary is the whole point
+	cmd := exec.CommandContext(t.Context(), os.Args[0], "-test.run=^TestWaitForShutdown_secondSignalKills$")
+	cmd.Env = append(os.Environ(), shutdownHelperEnv+"=1")
+	stdout, err := cmd.StdoutPipe()
+	require.NoError(t, err)
+	require.NoError(t, cmd.Start())
+	t.Cleanup(func() { _ = cmd.Process.Kill() })
+
+	lines := bufio.NewScanner(stdout)
+	waitForLine := func(want string) {
+		t.Helper()
+		for lines.Scan() {
+			if lines.Text() == want {
+				return
+			}
+		}
+		t.Fatalf("child exited before printing %q", want)
+	}
+
+	waitForLine("ready")
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
+	waitForLine("draining")
+	require.NoError(t, cmd.Process.Signal(syscall.SIGINT))
+
+	done := make(chan error, 1)
+	go func() { done <- cmd.Wait() }()
+	select {
+	case err := <-done:
+		var exitErr *exec.ExitError
+		require.ErrorAs(t, err, &exitErr)
+		status, ok := exitErr.Sys().(syscall.WaitStatus)
+		require.True(t, ok)
+		assert.Equal(t, syscall.SIGINT, status.Signal(), "expected the second SIGINT to kill the child")
+	case <-time.After(2 * time.Second):
+		t.Fatal("child swallowed the second SIGINT and is still draining")
+	}
 }
 
 // Nested keys have dots and dashes in them, neither of which most shells will let you put in an env var name

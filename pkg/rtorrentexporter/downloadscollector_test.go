@@ -222,7 +222,7 @@ func TestDownloadsCollector_getDownloadDetailCommands(t *testing.T) {
 
 func TestDownloadsCollector_Describe(t *testing.T) {
 	t.Parallel()
-	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
+	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true, DownloadMessages: true})
 	ch := make(chan *prometheus.Desc)
 
 	go func() {
@@ -230,7 +230,56 @@ func TestDownloadsCollector_Describe(t *testing.T) {
 		collector.Describe(ch)
 	}()
 
-	for range ch {
-		// Consume the channel
+	var descs []string
+	for d := range ch {
+		descs = append(descs, d.String())
 	}
+
+	// Everything Collect can emit should be described, otherwise the two lists drift apart
+	for _, want := range []*prometheus.Desc{collector.Downloads, collector.DownloadsError, collector.DownloadMessages} {
+		assert.Contains(t, descs, want.String())
+	}
+}
+
+func mockCountsSource() *MockDownloadsSource {
+	ds := new(MockDownloadsSource)
+	for _, view := range []string{"All", "Started", "Stopped", "Complete", "Incomplete", "Hashing", "Seeding", "Leeching", "Active"} {
+		ds.On(view).Return([]string{testHash}, nil)
+	}
+	return ds
+}
+
+func gatheredNames(t *testing.T, c prometheus.Collector) []string {
+	t.Helper()
+	reg := prometheus.NewPedanticRegistry()
+	require.NoError(t, reg.Register(c))
+	mfs, err := reg.Gather()
+	require.NoError(t, err)
+
+	names := make([]string, 0, len(mfs))
+	for _, mf := range mfs {
+		names = append(names, mf.GetName())
+	}
+	return names
+}
+
+func TestDownloadsCollector_Collect(t *testing.T) {
+	t.Parallel()
+	t.Run("total downloads is emitted without details", func(t *testing.T) {
+		t.Parallel()
+		collector := NewDownloadsCollector(mockCountsSource(), CollectorOpts{})
+
+		assert.Contains(t, gatheredNames(t, collector), "rtorrent_downloads")
+	})
+
+	t.Run("total downloads is emitted with details", func(t *testing.T) {
+		t.Parallel()
+		ds := mockCountsSource()
+		ds.On("DownloadWithDetails", defaultActiveCommands).Return([][]any{
+			{testHash, testName, int64(100), int64(200), int64(300), int64(400), nil},
+		}, nil)
+		collector := NewDownloadsCollector(ds, CollectorOpts{DownloadDetails: true})
+
+		assert.Contains(t, gatheredNames(t, collector), "rtorrent_downloads")
+	})
 }

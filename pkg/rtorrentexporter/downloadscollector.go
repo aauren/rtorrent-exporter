@@ -269,6 +269,7 @@ func (c *DownloadsCollector) collectDownloadCounts(ch chan<- prometheus.Metric) 
 		desc  *prometheus.Desc
 		fetch func() ([]string, error)
 	}{
+		{c.Downloads, c.ds.All},
 		{c.DownloadsStarted, c.ds.Started},
 		{c.DownloadsStopped, c.ds.Stopped},
 		{c.DownloadsComplete, c.ds.Complete},
@@ -305,12 +306,6 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 	if err != nil {
 		return c.DownloadsActive, err
 	}
-
-	ch <- prometheus.MustNewConstMetric(
-		c.Downloads,
-		prometheus.GaugeValue,
-		float64(len(all)),
-	)
 
 	failedDownloads := 0
 
@@ -505,7 +500,13 @@ func (c *DownloadsCollector) Describe(ch chan<- *prometheus.Desc) {
 			c.DownloadTotalBytes,
 			c.UploadRateBytes,
 			c.UploadTotalBytes,
+			c.DownloadsError,
 		)
+	}
+
+	// Messages are only ever emitted from the details path, so they need both switches on
+	if c.collectOpts.DownloadDetails && c.collectOpts.DownloadMessages {
+		ds = append(ds, c.DownloadMessages)
 	}
 
 	for _, d := range ds {

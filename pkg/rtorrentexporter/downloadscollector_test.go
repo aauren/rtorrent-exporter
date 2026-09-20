@@ -95,6 +95,7 @@ func (m *MockDownloadsSource) DownloadWithDetails(cmds []string) ([][]any, error
 }
 
 func TestNewDownloadsCollector(t *testing.T) {
+	t.Parallel()
 	ds := new(MockDownloadsSource)
 	collectorOpts := CollectorOpts{DownloadDetails: true}
 	collector := NewDownloadsCollector(ds, collectorOpts)
@@ -104,6 +105,7 @@ func TestNewDownloadsCollector(t *testing.T) {
 }
 
 func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
+	t.Parallel()
 	ds := new(MockDownloadsSource)
 	ds.On("All").Return([]string{}, nil)
 	ds.On("Started").Return([]string{}, nil)
@@ -131,6 +133,7 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 }
 
 func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
+	t.Parallel()
 	ds := new(MockDownloadsSource)
 	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 	ds.On("DownloadWithDetails", cmds).Return([][]any{
@@ -153,6 +156,7 @@ func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 }
 
 func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
+	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
 	ch := make(chan prometheus.Metric)
 	a := []any{testHash, testName, int64(100), int64(200), int64(300), int64(400)}
@@ -171,6 +175,7 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 }
 
 func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
+	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{})
 	torSlice := []any{testHash, testName}
 
@@ -180,12 +185,14 @@ func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
 }
 
 func TestDownloadsCollector_getDownloadDetailCommands(t *testing.T) {
+	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{})
 	cmds := collector.getDownloadDetailCommands()
 	assert.Equal(t, defaultActiveCommands, cmds)
 }
 
 func TestDownloadsCollector_Describe(t *testing.T) {
+	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
 	ch := make(chan *prometheus.Desc)
 

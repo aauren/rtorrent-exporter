@@ -14,6 +14,7 @@ import (
 )
 
 func TestTimedTrackerCacheInstance_IsStale(t *testing.T) {
+	t.Parallel()
 	tests := []struct {
 		name      string
 		fetchedAt time.Time
@@ -28,6 +29,7 @@ func TestTimedTrackerCacheInstance_IsStale(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
 			ttci := &TimedTrackerCacheInstance{
 				FetchedAt: tt.fetchedAt,
 			}
@@ -38,7 +40,9 @@ func TestTimedTrackerCacheInstance_IsStale(t *testing.T) {
 }
 
 func TestGetTrackerFromCacheOnly(t *testing.T) {
+	t.Parallel()
 	t.Run("tracker found in cache", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -61,6 +65,7 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 	})
 
 	t.Run("tracker not found in cache, error found", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -76,6 +81,7 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 	})
 
 	t.Run("tracker not found in cache, no error", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -91,7 +97,9 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 }
 
 func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
+	t.Parallel()
 	t.Run("tracker found in cache and not stale", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -127,6 +135,7 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 	})
 
 	t.Run("tracker found in cache but stale", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -160,6 +169,7 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 	})
 
 	t.Run("tracker not found in cache", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -182,7 +192,9 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 }
 
 func TestGetTrackerFromCacheBlocking(t *testing.T) {
+	t.Parallel()
 	t.Run("tracker found in cache", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -248,6 +260,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 	})
 
 	t.Run("tracker not found in cache, context canceled", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -301,7 +314,9 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 }
 
 func TestCacheTrackers(t *testing.T) {
+	t.Parallel()
 	t.Run("single tracker", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -327,6 +342,7 @@ func TestCacheTrackers(t *testing.T) {
 	})
 
 	t.Run("multiple trackers", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
@@ -370,7 +386,9 @@ func TestCacheTrackers(t *testing.T) {
 }
 
 func TestCacheTrackersError(t *testing.T) {
+	t.Parallel()
 	t.Run("nil tracker", func(t *testing.T) {
+		t.Parallel()
 		ctx, cancelFunc := context.WithCancel(t.Context())
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
@@ -391,6 +409,7 @@ func TestCacheTrackersError(t *testing.T) {
 	})
 
 	t.Run("multiple trackers", func(t *testing.T) {
+		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
 			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),

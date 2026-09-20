@@ -28,6 +28,7 @@ func (m *MockSource) TrackerWithDetails(ctx context.Context, ti *rtorrent.Tracke
 }
 
 func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -46,6 +47,7 @@ func TestFetcher_GetTrackersByHashIndexAllFields(t *testing.T) {
 }
 
 func TestFetcher_GetTrackersByHashAllFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -63,6 +65,7 @@ func TestFetcher_GetTrackersByHashAllFields(t *testing.T) {
 }
 
 func TestFetcher_GetTrackersAllFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -81,6 +84,7 @@ func TestFetcher_GetTrackersAllFields(t *testing.T) {
 }
 
 func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -100,6 +104,7 @@ func TestFetcher_GetTrackersByHashIndexSelectedFields(t *testing.T) {
 }
 
 func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -118,6 +123,7 @@ func TestFetcher_GetTrackersByHashSelectedFields(t *testing.T) {
 }
 
 func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx := t.Context()
@@ -137,6 +143,7 @@ func TestFetcher_GetTrackersSelectedFields(t *testing.T) {
 }
 
 func TestFetcher_Run(t *testing.T) {
+	t.Parallel()
 	mockSource := new(MockSource)
 	fetcher := NewFetcher(mockSource)
 	ctx, cancel := context.WithCancel(t.Context())

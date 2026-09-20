@@ -85,6 +85,31 @@ func TestWaitForShutdown_secondSignalKills(t *testing.T) {
 	}
 }
 
+func TestLoadConfig(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name     string
+		useViper bool
+		wantAddr string
+	}{
+		{"unmarshals when useviper is set", true, "http://from-viper"},
+		{"leaves config alone when useviper is unset", false, ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			v := viper.New()
+			v.Set("useviper", tt.useViper)
+			v.Set("rtorrent.addr", "http://from-viper")
+			cfg := &config.Config{}
+
+			require.NoError(t, loadConfig(v, cfg))
+			assert.Equal(t, tt.wantAddr, cfg.Rtorrent.Addr)
+		})
+	}
+}
+
 // Nested keys have dots and dashes in them, neither of which most shells will let you put in an env var name
 func TestConfigureViperEnv(t *testing.T) {
 	tests := []struct {

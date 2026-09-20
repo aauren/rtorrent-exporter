@@ -154,13 +154,18 @@ func initConfig() {
 	if err := viper.ReadInConfig(); err == nil {
 		klog.Infof("Using config file: %v", viper.ConfigFileUsed())
 	}
-	if rootConfig.UseViper || viper.GetBool("useViper") {
-		klog.Infof("using viper for configuration")
-		err := viper.Unmarshal(rootConfig)
-		if err != nil {
-			klog.Fatalf("failed to unmarshal configuration: %v", err)
-		}
+	if err := loadConfig(viper.GetViper(), rootConfig); err != nil {
+		klog.Fatalf("failed to unmarshal configuration: %v", err)
 	}
+}
+
+// loadConfig fills cfg from viper when the viper switch is on, the flags have already been bound directly otherwise
+func loadConfig(v *viper.Viper, cfg *config.Config) error {
+	if !v.GetBool("useviper") {
+		return nil
+	}
+	klog.Infof("using viper for configuration")
+	return v.Unmarshal(cfg)
 }
 
 // configureViperEnv maps config keys like rtorrent.trackers.cache.min-age to RTORRENT_EXPORTER_RTORRENT_TRACKERS_CACHE_MIN_AGE

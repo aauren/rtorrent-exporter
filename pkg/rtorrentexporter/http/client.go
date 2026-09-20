@@ -3,6 +3,7 @@ package http
 import (
 	"context"
 	"crypto/tls"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -25,15 +26,19 @@ type authRoundTripper struct {
 	Username  string
 	Password  string
 	Transport *http.Transport
+	Timeout   time.Duration
 }
 
 func NewRoundTripper(opts ClientOpts) http.RoundTripper {
 	t := &timeout{DialTimeout: opts.DialTimeout}
 	rt := &authRoundTripper{
+		Timeout: opts.DialTimeout,
 		Transport: &http.Transport{
 			// We build the transport by hand rather than cloning http.DefaultTransport, so proxy support has to be asked for explicitly
 			Proxy:       http.ProxyFromEnvironment,
 			DialContext: t.dialTimeout,
+			// The dial timeout alone lets an rtorrent that accepts and then hangs stall a scrape forever
+			ResponseHeaderTimeout: opts.DialTimeout,
 			TLSClientConfig: &tls.Config{
 				MinVersion: tls.VersionTLS12,
 				//nolint:gosec // we don't care that this may be true, that's the point
@@ -59,15 +64,35 @@ func (t *timeout) dialTimeout(ctx context.Context, network, addr string) (net.Co
 }
 
 func (rt *authRoundTripper) RoundTrip(r *http.Request) (*http.Response, error) {
-	// Without a full set of credentials there's nothing to add, so we hand the request straight through rather than sending a partial or
-	// empty Basic header. The constructor only ever sets both or neither, but || is the defensive choice against direct struct construction
-	if rt.Username == "" || rt.Password == "" {
-		return rt.Transport.RoundTrip(r)
+	req := r.Clone(r.Context())
+	var cancel context.CancelFunc
+	if rt.Timeout > 0 {
+		var ctx context.Context
+		ctx, cancel = context.WithTimeout(req.Context(), rt.Timeout)
+		req = req.WithContext(ctx)
+	}
+	if rt.Username != "" && rt.Password != "" {
+		req.SetBasicAuth(rt.Username, rt.Password)
 	}
 
-	// RoundTrip isn't allowed to modify the request it was given, so we set the header on a clone
-	req := r.Clone(r.Context())
-	req.SetBasicAuth(rt.Username, rt.Password)
+	resp, err := rt.Transport.RoundTrip(req)
+	if cancel != nil {
+		if err != nil {
+			cancel()
+		} else {
+			// We keep the deadline alive until Close because RoundTrip returns before the body has been read
+			resp.Body = &cancelBody{ReadCloser: resp.Body, cancel: cancel}
+		}
+	}
+	return resp, err
+}
 
-	return rt.Transport.RoundTrip(req)
+type cancelBody struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b *cancelBody) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
 }

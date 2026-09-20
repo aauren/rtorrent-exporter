@@ -155,6 +155,21 @@ func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 	}
 }
 
+// The desc that comes back with an error is what the invalid metric gets reported under, so it should be one that the details path
+// actually owns rather than one the counts path already emitted successfully
+func TestDownloadsCollector_collectDownloadDetails_error(t *testing.T) {
+	t.Parallel()
+	ds := new(MockDownloadsSource)
+	ds.On("DownloadWithDetails", defaultActiveCommands).Return([][]any{}, assert.AnError)
+
+	collector := NewDownloadsCollector(ds, CollectorOpts{DownloadDetails: true})
+	ch := make(chan prometheus.Metric, 1)
+
+	desc, err := collector.collectDownloadDetails(ch)
+	require.ErrorIs(t, err, assert.AnError)
+	assert.Equal(t, collector.DownloadRateBytes, desc)
+}
+
 func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	t.Parallel()
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})

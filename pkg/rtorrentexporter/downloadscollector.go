@@ -304,7 +304,8 @@ func (c *DownloadsCollector) collectDownloadDetails(ch chan<- prometheus.Metric)
 
 	all, err := c.ds.DownloadWithDetails(cmds)
 	if err != nil {
-		return c.DownloadsActive, err
+		// Report under a desc this path owns, the counts path has already emitted DownloadsActive by now
+		return c.DownloadRateBytes, err
 	}
 
 	failedDownloads := 0

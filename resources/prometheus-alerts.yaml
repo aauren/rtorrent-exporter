@@ -1,0 +1,142 @@
+# Prometheus alerting rules for rtorrent-exporter.
+#
+# These are recommendations, not gospel - tune the `for` durations and thresholds to match your
+# scrape interval and how many torrents/trackers you're actually running. Everything here assumes
+# the default flags (--rtorrent.downloads.collect.details=true, --rtorrent.downloads.collect.messages=true,
+# --rtorrent.trackers.enabled=true). If you've turned any of those off, the corresponding group below
+# won't have any data to alert on and you should drop it.
+#
+# Load with `promtool check rules resources/prometheus-alerts.yaml` before wiring it into Prometheus.
+groups:
+  - name: rtorrent-exporter-health
+    rules:
+      - alert: RtorrentExporterDown
+        expr: up{job=~".*rtorrent.*"} == 0
+        for: 5m
+        labels:
+          severity: critical
+        annotations:
+          summary: "rtorrent-exporter is down ({{ $labels.instance }})"
+          description: >-
+            Prometheus hasn't been able to scrape {{ $labels.job }} on {{ $labels.instance }} for 5
+            minutes. Either the exporter process died, or it can't reach rTorrent's XML-RPC endpoint
+            (check `--rtorrent.addr` and rTorrent's own health).
+
+      - alert: RtorrentExporterScrapeSlow
+        expr: rtorrent_downloads_scrape_duration_seconds > 5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "rtorrent-exporter scrapes are slow on {{ $labels.instance }}"
+          description: >-
+            The last downloads scrape on {{ $labels.instance }} took {{ $value | humanizeDuration }}.
+            This metric covers the full round trip to rTorrent's XML-RPC API (counts, details, and
+            tracker cache stats), so sustained slowness usually means rTorrent itself is struggling,
+            not the exporter. Watch for scrapes eventually timing out and failing outright.
+
+  - name: rtorrent-downloads
+    rules:
+      # This can be uncommented if you don't frequently get unlisted torrents or some such, but
+      # can be quite noisy, so by default it is disabled.
+      #
+      #- alert: RtorrentDownloadsWithTrackerErrors
+      #  expr: rtorrent_downloads_error > 0
+      #  for: 15m
+      #  labels:
+      #    severity: warning
+      #  annotations:
+      #    summary: "{{ $value }} download(s) have tracker errors on {{ $labels.instance }}"
+      #    description: >-
+      #      rtorrent_downloads_error has been above zero for 15 minutes on {{ $labels.instance }}.
+      #      Enable --rtorrent.downloads.collect.messages if it isn't already, then check
+      #      rtorrent_downloads_messages for the actual tracker message (private tracker bans, dead
+      #      trackers, and unregistered torrents are the usual causes).
+
+      - alert: RtorrentDownloadsTrackerErrorRatioHigh
+        expr: >-
+          rtorrent_downloads_error / clamp_min(rtorrent_downloads, 1) > 0.25
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "Over a quarter of downloads are erroring on {{ $labels.instance }}"
+          description: >-
+            {{ $value | humanizePercentage }} of all downloads on {{ $labels.instance }} have been
+            reporting tracker errors for 30 minutes. This looks less like a handful of dead torrents
+            and more like a shared problem: a banned IP/passkey, a DNS issue, or an outbound
+            connectivity problem affecting most trackers at once.
+
+      - alert: RtorrentDownloadsHashingStuck
+        expr: rtorrent_downloads_hashing > 0
+        for: 1h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Download(s) stuck hash-checking on {{ $labels.instance }}"
+          description: >-
+            rtorrent_downloads_hashing has stayed above zero for an hour on {{ $labels.instance }}.
+            rTorrent can wedge a torrent in the hashing state indefinitely, usually because of disk
+            I/O problems or a corrupted/missing data file. Worth checking rTorrent's own log and the
+            underlying disk.
+
+      - alert: RtorrentActiveDownloadsStalled
+        expr: >-
+          rtorrent_downloads_active > 0
+          and on (instance, job)
+          sum by (instance, job) (rtorrent_downloads_download_rate_bytes + rtorrent_downloads_upload_rate_bytes) == 0
+        for: 3h
+        labels:
+          severity: warning
+        annotations:
+          summary: "Active downloads aren't moving any bytes on {{ $labels.instance }}"
+          description: >-
+            rTorrent reports {{ $labels.instance }} has active downloads, but total upload+download
+            throughput across all torrents has been zero for 15 minutes. Peers may have vanished, the
+            tracker may not be handing out peers, or rTorrent's networking may be stuck.
+
+  - name: rtorrent-tracker-cache
+    rules:
+      - alert: RtorrentTrackerCacheRequestsDropped
+        expr: increase(rtorrent_tracker_cache_fetch_requests_dropped_total[10m]) > 0
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker cache is dropping fetch requests on {{ $labels.instance }}"
+          description: >-
+            Tracker fetch requests have kept being dropped on {{ $labels.instance }}
+            (reason={{ $labels.reason }}) for 30 minutes straight. Note: PreWarmCache queues a
+            fetch for every existing download's hash on exporter startup, which can briefly overflow
+            the fetch queue (capacity = max-parallel-requests * 10) and bump this counter once right
+            after a restart - that's expected and self-heals within a scrape or two, which is why this
+            alert requires drops to persist for 30 minutes before firing. A sustained trip here means
+            the fetch queue is genuinely undersized for ongoing load; consider raising
+            --rtorrent.trackers.cache.max-parallel-requests.
+
+      - alert: RtorrentTrackerCacheFetchQueueBacklog
+        expr: rtorrent_tracker_cache_fetch_queue_length > 0
+        for: 20m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Tracker fetch queue has a persistent backlog on {{ $labels.instance }}"
+          description: >-
+            rtorrent_tracker_cache_fetch_queue_length has been non-zero for 20 minutes on
+            {{ $labels.instance }} ({{ $value }} queued). The fetcher pool isn't keeping up with
+            tracker lookups; check --rtorrent.trackers.cache.max-parallel-requests and whether trackers
+            are responding slowly.
+
+      - alert: RtorrentTrackerCacheErrorRatioHigh
+        expr: >-
+          rtorrent_tracker_cache_error_entries
+          / clamp_min(rtorrent_tracker_cache_entries + rtorrent_tracker_cache_error_entries, 1) > 0.3
+        for: 30m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Large share of cached trackers are in an error state on {{ $labels.instance }}"
+          description: >-
+            {{ $value | humanizePercentage }} of tracked trackers in the cache on {{ $labels.instance }}
+            are negative (error) cache entries. That usually points at a DNS or outbound connectivity
+            problem affecting many trackers rather than a single dead one.

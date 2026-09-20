@@ -1,0 +1,59 @@
+rule_files:
+  - prometheus-alerts.yaml
+evaluation_interval: 1m
+tests:
+  - name: steady transfers aren't stalled
+    interval: 1m
+    input_series:
+      - series: 'rtorrent_downloads_active{instance="test",job="rtorrent"}'
+        values: '1+0x30'
+      - series: 'rtorrent_downloads_download_rate_bytes{instance="test",job="rtorrent",hash="abc"}'
+        values: '1000000+0x30'
+      - series: 'rtorrent_downloads_upload_rate_bytes{instance="test",job="rtorrent",hash="abc"}'
+        values: '500000+0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RtorrentActiveDownloadsStalled
+        exp_alerts: []
+
+  - name: stalled transfers with extra target labels fire after fifteen minutes
+    interval: 1m
+    input_series:
+      - series: 'rtorrent_downloads_active{instance="test",job="rtorrent",cluster="home"}'
+        values: '1+0x30'
+      - series: 'rtorrent_downloads_download_rate_bytes{instance="test",job="rtorrent",cluster="home",hash="abc"}'
+        values: '0+0x30'
+      - series: 'rtorrent_downloads_upload_rate_bytes{instance="test",job="rtorrent",cluster="home",hash="abc"}'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 14m
+        alertname: RtorrentActiveDownloadsStalled
+        exp_alerts: []
+      - eval_time: 16m
+        alertname: RtorrentActiveDownloadsStalled
+        exp_alerts:
+          - exp_labels:
+              instance: test
+              job: rtorrent
+              cluster: home
+              severity: warning
+            exp_annotations:
+              summary: "Active downloads aren't moving any bytes on test"
+              description: >-
+                rTorrent reports test has active downloads, but total upload+download
+                throughput across all torrents has been zero for 15 minutes. Peers may have vanished, the
+                tracker may not be handing out peers, or rTorrent's networking may be stuck.
+
+  - name: an idle instance isn't stalled
+    interval: 1m
+    input_series:
+      - series: 'rtorrent_downloads_active{instance="test",job="rtorrent"}'
+        values: '0+0x30'
+      - series: 'rtorrent_downloads_download_rate_bytes{instance="test",job="rtorrent",hash="abc"}'
+        values: '0+0x30'
+      - series: 'rtorrent_downloads_upload_rate_bytes{instance="test",job="rtorrent",hash="abc"}'
+        values: '0+0x30'
+    alert_rule_test:
+      - eval_time: 30m
+        alertname: RtorrentActiveDownloadsStalled
+        exp_alerts: []

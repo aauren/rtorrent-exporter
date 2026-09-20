@@ -138,7 +138,7 @@ func TestDownloadsCollector_collectDownloadCounts(t *testing.T) {
 func TestDownloadsCollector_collectDownloadDetails(t *testing.T) {
 	t.Parallel()
 	ds := new(MockDownloadsSource)
-	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
+	cmds := []string{cmdHash, cmdName, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 	ds.On("DownloadWithDetails", cmds).Return([][]any{
 		{testHash, testName, int64(100), int64(200), int64(300), int64(400), nil},
 	}, nil)
@@ -178,7 +178,7 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true})
 	ch := make(chan prometheus.Metric)
 	a := []any{testHash, testName, int64(100), int64(200), int64(300), int64(400)}
-	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
+	cmds := []string{cmdHash, cmdName, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
 
 	go func() {
 		defer close(ch)
@@ -196,7 +196,7 @@ func TestDownloadsCollector_parseDownloadDetailsMetrics(t *testing.T) {
 // takes down the exporter
 func TestDownloadsCollector_parseDownloadDetailsMetrics_malformedRow(t *testing.T) {
 	t.Parallel()
-	cmds := []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
+	cmds := []string{cmdHash, cmdName, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal}
 	tests := []struct {
 		name string
 		row  []any

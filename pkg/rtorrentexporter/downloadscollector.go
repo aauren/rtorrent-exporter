@@ -80,18 +80,21 @@ type CollectorOpts struct {
 
 // The rTorrent XML-RPC commands that we send when asking for download details
 const (
-	cmdHash         = "d.hash="
-	cmdBaseFilename = "d.base_filename="
-	cmdDownRate     = "d.down.rate="
-	cmdDownTotal    = "d.down.total="
-	cmdUpRate       = "d.up.rate="
-	cmdUpTotal      = "d.up.total="
-	cmdMessage      = "d.message="
+	cmdHash      = "d.hash="
+	cmdName      = "d.name="
+	cmdDownRate  = "d.down.rate="
+	cmdDownTotal = "d.down.total="
+	cmdUpRate    = "d.up.rate="
+	cmdUpTotal   = "d.up.total="
+	cmdMessage   = "d.message="
 )
 
 var (
-	hashOnlyCommand       = []string{cmdHash}
-	defaultActiveCommands = []string{cmdHash, cmdBaseFilename, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
+	hashOnlyCommand = []string{cmdHash}
+	// d.name= is used instead of d.base_filename= because base_filename requires the download's file list to be loaded (the
+	// download must be "open"), and rTorrent can fail that lookup for a stopped, still-hashing, or metadata-less magnet
+	// download. d.name= just returns the stored name field and doesn't have that dependency.
+	defaultActiveCommands = []string{cmdHash, cmdName, cmdDownRate, cmdDownTotal, cmdUpRate, cmdUpTotal, cmdMessage}
 )
 
 // ErrHashConversion is what a caller gets when rTorrent hands back something other than a string where an info hash was expected. It

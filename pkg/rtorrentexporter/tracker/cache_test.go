@@ -45,7 +45,7 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
@@ -58,9 +58,8 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		}
 		c.trackerCache[ti] = ttci
 
-		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		require.NoError(t, err)
-		assert.True(t, ok)
+		result, tte := c.getTrackerFromCacheOnly(&ti)
+		assert.Nil(t, tte)
 		assert.Equal(t, ttci, result)
 	})
 
@@ -68,15 +67,15 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
-		c.trackerRespErrors[ti] = rtorrent.ErrBadData
+		c.trackerRespErrors[ti] = &TimedTrackerError{Err: rtorrent.ErrBadData, FetchedAt: time.Now()}
 
-		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		require.ErrorIs(t, err, rtorrent.ErrBadData)
-		assert.False(t, ok)
+		result, tte := c.getTrackerFromCacheOnly(&ti)
+		require.NotNil(t, tte)
+		require.ErrorIs(t, tte.Err, rtorrent.ErrBadData)
 		assert.Nil(t, result)
 	})
 
@@ -84,14 +83,13 @@ func TestGetTrackerFromCacheOnly(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
 
-		result, ok, err := c.getTrackerFromCacheOnly(&ti)
-		require.NoError(t, err)
-		assert.False(t, ok)
+		result, tte := c.getTrackerFromCacheOnly(&ti)
+		assert.Nil(t, tte)
 		assert.Nil(t, result)
 	})
 }
@@ -102,7 +100,7 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			cacheCheckChan:    make(chan *FetchRequest, 1),
 			reqChan:           make(chan *FetchRequest, 1),
 			cOpts: CacheOpts{
@@ -138,7 +136,7 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			cacheCheckChan:    make(chan *FetchRequest, 1),
 			reqChan:           make(chan *FetchRequest, 1),
 			cOpts: CacheOpts{
@@ -172,7 +170,7 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			cacheCheckChan:    make(chan *FetchRequest, 1),
 			reqChan:           make(chan *FetchRequest, 1),
 		}
@@ -189,6 +187,104 @@ func TestGetTrackerFromCacheNonBlocking(t *testing.T) {
 			t.Fatal("expected cache check request, but got none")
 		}
 	})
+
+	// A cached error is a negative cache hit, so we shouldn't be asking rtorrent again on every scrape
+	t.Run("tracker has cached error", func(t *testing.T) {
+		t.Parallel()
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
+			cacheCheckChan:    make(chan *FetchRequest, 1),
+			reqChan:           make(chan *FetchRequest, 1),
+			cOpts: CacheOpts{
+				MaxAge: 10 * time.Minute,
+				MinAge: 5 * time.Minute,
+			},
+		}
+
+		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+		c.trackerRespErrors[ti] = &TimedTrackerError{Err: rtorrent.ErrBadData, FetchedAt: time.Now()}
+
+		result := c.GetTrackerFromCacheNonBlocking(&ti)
+		assert.Nil(t, result)
+
+		select {
+		case <-c.cacheCheckChan:
+			t.Fatal("expected no cache check request for a cached error, but got one")
+		case <-c.reqChan:
+			t.Fatal("expected no fetch request for a cached error, but got one")
+		default:
+		}
+	})
+
+	t.Run("tracker has stale cached error", func(t *testing.T) {
+		t.Parallel()
+		c := &Cacher{
+			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
+			cacheCheckChan:    make(chan *FetchRequest, 1),
+			reqChan:           make(chan *FetchRequest, 1),
+			cOpts: CacheOpts{
+				MaxAge: 10 * time.Minute,
+				MinAge: 5 * time.Minute,
+			},
+		}
+
+		ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+		c.trackerRespErrors[ti] = &TimedTrackerError{Err: rtorrent.ErrBadData, FetchedAt: time.Now().Add(-15 * time.Minute)}
+
+		result := c.GetTrackerFromCacheNonBlocking(&ti)
+		assert.Nil(t, result)
+
+		select {
+		case fr := <-c.reqChan:
+			assert.Equal(t, &ti, fr.TrackerIndex)
+		default:
+			t.Fatal("expected fetch request for a stale cached error, but got none")
+		}
+	})
+}
+
+func TestCheckCacheCheckChan(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name        string
+		errAge      time.Duration
+		wantForward bool
+	}{
+		{"cached error is not forwarded", 0, false},
+		{"stale cached error is forwarded", 15 * time.Minute, true},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := &Cacher{
+				trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
+				trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
+				cacheCheckChan:    make(chan *FetchRequest, 1),
+				reqChan:           make(chan *FetchRequest, 1),
+				cOpts: CacheOpts{
+					MaxAge: 10 * time.Minute,
+					MinAge: 5 * time.Minute,
+				},
+			}
+
+			ti := rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
+			c.trackerRespErrors[ti] = &TimedTrackerError{Err: rtorrent.ErrBadData, FetchedAt: time.Now().Add(-tt.errAge)}
+			c.cacheCheckChan <- &FetchRequest{TrackerIndex: &ti}
+
+			c.checkCacheCheckChan()
+
+			select {
+			case fr := <-c.reqChan:
+				require.True(t, tt.wantForward, "expected no fetch request for a cached error, but got one")
+				assert.Equal(t, &ti, fr.TrackerIndex)
+			default:
+				require.False(t, tt.wantForward, "expected fetch request for a stale cached error, but got none")
+			}
+		})
+	}
 }
 
 func TestGetTrackerFromCacheBlocking(t *testing.T) {
@@ -197,7 +293,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			cacheCheckChan:    make(chan *FetchRequest, 1),
 			reqChan:           make(chan *FetchRequest, 1),
 			cOpts: CacheOpts{
@@ -228,7 +324,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			c := &Cacher{
 				trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-				trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+				trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 				cacheCheckChan:    make(chan *FetchRequest, 1),
 				reqChan:           make(chan *FetchRequest, 1),
 				cOpts: CacheOpts{
@@ -263,7 +359,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			cacheCheckChan:    make(chan *FetchRequest, 1),
 			reqChan:           make(chan *FetchRequest, 1),
 			cOpts: CacheOpts{
@@ -287,7 +383,7 @@ func TestGetTrackerFromCacheBlocking(t *testing.T) {
 		synctest.Test(t, func(t *testing.T) {
 			c := &Cacher{
 				trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-				trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+				trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 				cacheCheckChan:    make(chan *FetchRequest, 1),
 				reqChan:           make(chan *FetchRequest, 1),
 				cOpts: CacheOpts{
@@ -319,7 +415,7 @@ func TestCacheTrackers(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := &rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
@@ -345,7 +441,7 @@ func TestCacheTrackers(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti1 := &rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
@@ -390,7 +486,7 @@ func TestCacheTrackers(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := rtorrent.NewTrackerNoIndex("12345")
@@ -414,7 +510,7 @@ func TestCacheTrackersError(t *testing.T) {
 		ctx, cancelFunc := context.WithCancel(t.Context())
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			blockingReqCtx:    ctx,
 			blockingReqCancel: cancelFunc,
 		}
@@ -434,7 +530,7 @@ func TestCacheTrackersError(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti1 := &rtorrent.TrackerIndex{InfoHash: "12345", Index: 1}
@@ -451,8 +547,8 @@ func TestCacheTrackersError(t *testing.T) {
 
 		c.cacheTrackersError(tr)
 
-		assert.Equal(t, err, c.trackerRespErrors[*ti1])
-		assert.Equal(t, err, c.trackerRespErrors[*ti2])
+		assert.Equal(t, err, c.trackerRespErrors[*ti1].Err)
+		assert.Equal(t, err, c.trackerRespErrors[*ti2].Err)
 		assert.Empty(t, c.trackerCache)
 	})
 
@@ -462,7 +558,7 @@ func TestCacheTrackersError(t *testing.T) {
 		t.Parallel()
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 		}
 
 		ti := rtorrent.NewTrackerNoIndex("12345")
@@ -474,7 +570,7 @@ func TestCacheTrackersError(t *testing.T) {
 
 		require.NotPanics(t, func() { c.cacheTrackersError(tr) })
 
-		assert.Equal(t, err, c.trackerRespErrors[*ti])
+		assert.Equal(t, err, c.trackerRespErrors[*ti].Err)
 		assert.Empty(t, c.trackerCache)
 	})
 }
@@ -485,7 +581,7 @@ func TestCheckCacheForStaleItems(t *testing.T) {
 	synctest.Test(t, func(t *testing.T) {
 		c := &Cacher{
 			trackerCache:      make(map[rtorrent.TrackerIndex]*TimedTrackerCacheInstance),
-			trackerRespErrors: make(map[rtorrent.TrackerIndex]error),
+			trackerRespErrors: make(map[rtorrent.TrackerIndex]*TimedTrackerError),
 			reqChan:           make(chan *FetchRequest, 1),
 			cOpts: CacheOpts{
 				MaxAge: 10 * time.Minute,
@@ -514,4 +610,52 @@ func TestCheckCacheForStaleItems(t *testing.T) {
 
 		wg.Wait()
 	})
+}
+
+func TestCheckCacheForStaleItems_errorExpiry(t *testing.T) {
+	t.Parallel()
+	tests := []struct {
+		name       string
+		age        time.Duration
+		wantCached bool
+	}{
+		{name: "fresh error", wantCached: true},
+		{name: "error at max age", age: time.Hour},
+		{name: "expired error", age: 2 * time.Hour},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			t.Parallel()
+			c := NewCacher(nil, CacheOpts{MinAge: time.Minute, MaxAge: time.Hour, MaxParallelRequests: 1})
+			ti := rtorrent.NewTrackerNoIndex("12345")
+			c.cacheTrackersError(&TrackerResponse{
+				TrackerIndex: ti,
+				Error:        assert.AnError,
+				FetchedAt:    time.Now().Add(-tt.age),
+			})
+
+			for range 2 {
+				c.checkCacheForStaleItems(t.Context())
+				assert.Empty(t, c.reqChan, "errors shouldn't trigger background fetches")
+				_, cached := c.trackerRespErrors[*ti]
+				assert.Equal(t, tt.wantCached, cached)
+			}
+			if tt.wantCached {
+				return
+			}
+
+			// We still fetch an expired entry when a scrape asks for it again
+			assert.Nil(t, c.GetTrackerFromCacheNonBlocking(ti))
+			c.checkCacheCheckChan()
+			require.Len(t, c.reqChan, 1)
+			assert.Equal(t, ti, (<-c.reqChan).TrackerIndex)
+			c.cacheTrackers(&TrackerResponse{
+				TrackerIndex: ti,
+				Trackers:     []*rtorrent.Tracker{new(rtorrent.Tracker).CloneWithTrackerIndex(ti)},
+				FetchedAt:    time.Now(),
+			})
+			assert.NotNil(t, c.GetTrackerFromCacheNonBlocking(ti))
+			assert.Empty(t, c.trackerRespErrors)
+		})
+	}
 }

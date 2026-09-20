@@ -2,6 +2,9 @@ package rtorrentexporter
 
 import (
 	"testing"
+	"time"
+
+	"github.com/aauren/rtorrent-exporter/pkg/rtorrentexporter/tracker"
 
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/stretchr/testify/assert"
@@ -226,6 +229,15 @@ func TestDownloadsCollector_gatherDownloadDetailLabels(t *testing.T) {
 	labels, err := collector.gatherDownloadDetailLabels(torSlice)
 	require.NoError(t, err)
 	assert.Equal(t, []string{testHash, testName}, labels)
+}
+
+// A cache miss and a tracker we couldn't parse should land on the same label value, otherwise the same torrent splits into two series
+func TestDownloadsCollector_getURLLabel_cacheMiss(t *testing.T) {
+	t.Parallel()
+	tc := tracker.NewCacher(nil, tracker.CacheOpts{MaxParallelRequests: 1, MinAge: time.Minute, MaxAge: time.Hour})
+	collector := NewDownloadsCollector(nil, CollectorOpts{DownloadDetails: true, CollectTrackerInfo: true, TC: tc})
+
+	assert.Equal(t, tracker.UnknownDomain, collector.getURLLabel(testHash))
 }
 
 func TestDownloadsCollector_getDownloadDetailCommands(t *testing.T) {

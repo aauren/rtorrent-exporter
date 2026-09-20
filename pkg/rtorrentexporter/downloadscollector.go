@@ -441,8 +441,9 @@ func (c *DownloadsCollector) gatherDownloadDetailLabels(torSlice []any) ([]strin
 // getURLLabel gets the URL label for a given hash.
 func (c *DownloadsCollector) getURLLabel(hash string) string {
 	t := c.collectOpts.TC.GetTrackerFromCacheNonBlocking(rtorrent.NewTrackerNoIndex(hash))
+	// Same value the cacher uses when it can't work out a domain, so a miss doesn't split the series
 	if t == nil {
-		return ""
+		return tracker.UnknownDomain
 	}
 
 	return t.SubstitutedDomain

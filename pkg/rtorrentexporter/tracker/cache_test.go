@@ -423,7 +423,7 @@ func TestCacheTrackers(t *testing.T) {
 		tracker = tracker.CloneWithTrackerIndex(ti)
 		mt := &ModifiedTracker{
 			Tracker:           tracker,
-			SubstitutedDomain: unknownDomain,
+			SubstitutedDomain: UnknownDomain,
 		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker},
@@ -450,19 +450,19 @@ func TestCacheTrackers(t *testing.T) {
 		tracker1 = tracker1.CloneWithTrackerIndex(ti1)
 		mt1 := &ModifiedTracker{
 			Tracker:           tracker1,
-			SubstitutedDomain: unknownDomain,
+			SubstitutedDomain: UnknownDomain,
 		}
 		tracker2 := &rtorrent.Tracker{}
 		tracker2 = tracker2.CloneWithTrackerIndex(ti2)
 		mt2 := &ModifiedTracker{
 			Tracker:           tracker2,
-			SubstitutedDomain: unknownDomain,
+			SubstitutedDomain: UnknownDomain,
 		}
 		ti1HashOnly := rtorrent.NewTrackerNoIndex(ti1.InfoHash)
 		tracker1HashOnly := tracker1.CloneWithTrackerIndex(ti1HashOnly)
 		mt1HashOnly := &ModifiedTracker{
 			Tracker:           tracker1HashOnly,
-			SubstitutedDomain: unknownDomain,
+			SubstitutedDomain: UnknownDomain,
 		}
 		tr := &TrackerResponse{
 			Trackers:  []*rtorrent.Tracker{tracker1, tracker2},
@@ -498,7 +498,7 @@ func TestCacheTrackers(t *testing.T) {
 		require.NotPanics(t, func() { c.cacheTrackers(tr) })
 
 		require.Contains(t, c.trackerCache, *ti)
-		assert.Equal(t, unknownDomain, c.trackerCache[*ti].Tracker.SubstitutedDomain)
+		assert.Equal(t, UnknownDomain, c.trackerCache[*ti].Tracker.SubstitutedDomain)
 		assert.Empty(t, c.trackerRespErrors)
 	})
 }

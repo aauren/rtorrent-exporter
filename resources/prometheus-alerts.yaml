@@ -80,19 +80,21 @@ groups:
             I/O problems or a corrupted/missing data file. Worth checking rTorrent's own log and the
             underlying disk.
 
+      # Keyed on leeching rather than active, because active counts seeding torrents too, which made this fire
+      # whenever an idle seedbox wasn't uploading.
       - alert: RtorrentActiveDownloadsStalled
         expr: >-
-          rtorrent_downloads_active > 0
+          rtorrent_downloads_leeching > 0
           and on (instance, job)
-          sum by (instance, job) (rtorrent_downloads_download_rate_bytes + rtorrent_downloads_upload_rate_bytes) == 0
+          sum by (instance, job) (rtorrent_downloads_download_rate_bytes) == 0
         for: 3h
         labels:
           severity: warning
         annotations:
-          summary: "Active downloads aren't moving any bytes on {{ $labels.instance }}"
+          summary: "Incomplete downloads aren't moving any bytes on {{ $labels.instance }}"
           description: >-
-            rTorrent reports {{ $labels.instance }} has active downloads, but total upload+download
-            throughput across all torrents has been zero for 15 minutes. Peers may have vanished, the
+            rTorrent reports {{ $labels.instance }} has torrents still downloading, but total download
+            throughput across all torrents has been zero for 3 hours. Peers may have vanished, the
             tracker may not be handing out peers, or rTorrent's networking may be stuck.
 
   - name: rtorrent-tracker-cache
